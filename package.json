@@ -1,0 +1,39 @@
+{
+  "name": "aakar-internship-aptitude-test",
+  "version": "1.0.0",
+  "description": "Backend for the Aakar Foundry Internship Aptitude Test (Node.js + Express + Firebase)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "seed": "node seed.js",
+    "seed:samples": "node seed.js --samples",
+    "reset-admin": "node seed.js --reset-admin",
+    "test": "node test/e2e.js && node test/netlify.js && node test/frontend.js",
+    "test:netlify": "node test/netlify.js",
+    "dev:netlify": "netlify dev",
+    "test:frontend": "node test/frontend.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@googleapis/drive": "^26.0.2",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "csv-parse": "^5.5.6",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "firebase-admin": "^12.6.0",
+    "google-auth-library": "^11.3.1",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "serverless-http": "^4.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
+}

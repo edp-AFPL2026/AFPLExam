@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="50 40 770 510" role="img" aria-label="Aakar Foundry">
+  <defs>
+    <mask id="notch">
+      <rect x="0" y="0" width="900" height="600" fill="#fff"/>
+      <circle cx="508" cy="220" r="60" fill="#000"/>
+    </mask>
+  </defs>
+  <g fill="#3A5F99" mask="url(#notch)">
+    <!-- A: swoosh stroke, right leg, crossbar and counter -->
+    <path fill-rule="evenodd" d="M62 540 L385 50 H490 V385 H375 V290 H275 L100 540 Z M372 148 V257 H300 Z"/>
+    <!-- F: stem and top bar -->
+    <path d="M527 50 H812 V86 H645 V385 H527 Z"/>
+  </g>
+  <!-- red slash (F middle bar) -->
+  <path fill="#D8312B" d="M594 207 L732 157 L736 186 L598 236 Z"/>
+</svg>

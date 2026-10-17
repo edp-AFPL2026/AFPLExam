@@ -1,0 +1,38 @@
+# Netlify settings for the Aakar Internship Aptitude Test
+
+[build]
+  publish = "public"                 # your frontend files go in /public
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Every /api/... request is handled by the Express app inside netlify/functions/api.js
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true
+
+# Auto-submit: closes every exam whose timer has ended (even if the student closed the browser). Runs every minute.
+[functions."autosubmit"]
+  schedule = "* * * * *"
+
+[functions]
+  node_bundler = "zisi"
+  # makes sure the Firebase key file is shipped with the API function
+  included_files = ["serviceAccountKey.json"]
+
+# Basic security headers for every page
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Keep the admin pages out of search engines
+[[headers]]
+  for = "/admin/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
