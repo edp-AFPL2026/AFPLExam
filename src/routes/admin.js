@@ -84,6 +84,7 @@ const configSchema = z
     mockCount: z.number().int().min(0).max(9),
     requireMocks: z.boolean(),
     clearAnswersOnTabSwitch: z.boolean(),
+    shuffleExamQuestions: z.boolean(),
     registrationOpen: z.boolean(),
     rules: z.array(z.string().trim().min(1).max(500)).max(30),
     testForOptions: z.array(z.string().trim().min(1).max(120)).max(50),

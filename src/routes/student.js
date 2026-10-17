@@ -14,6 +14,16 @@ const { clientKey, HttpError, asyncHandler, normEmail, normPhone, studentIdFromE
 
 const router = express.Router();
 
+// Fisher-Yates with crypto randomness: each student gets an independent order
+function shuffled(list) {
+  const a = list.slice();
+  for (let i = a.length - 1; i > 0; i -= 1) {
+    const j = require('crypto').randomInt(i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 // College labs usually share ONE public IP, so these limits are deliberately generous.
 const registerLimiter = rateLimit({ windowMs: 10 * 60 * 1000, limit: 400, standardHeaders: true, legacyHeaders: false, keyGenerator: clientKey, validate: { ip: false } });
 const loginLimiter = rateLimit({ windowMs: 10 * 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false, keyGenerator: clientKey, validate: { ip: false } });
@@ -294,6 +304,7 @@ router.post(
         // Everybody shares the same end time: scheduled start + duration (late starters get less time)
         endsAt: end,
         answers: {},
+        order: cfg.shuffleExamQuestions === false ? null : shuffled(questions.map((q) => q.id)),
         marking: { markingType: cfg.markingType, positiveMarks: cfg.positiveMarks, negativeMarks: cfg.negativeMarks },
         autoSubmitted: false,
       };
@@ -306,6 +317,20 @@ router.post(
       attempt = await loadAttempt(student.id);
     }
 
+    // The student's own question order is fixed when the exam starts, so a reload keeps the same sequence.
+    let ordered = questions;
+    if (cfg.shuffleExamQuestions !== false) {
+      let order = Array.isArray(attempt.order) ? attempt.order : null;
+      if (!order) {
+        order = shuffled(questions.map((q) => q.id));
+        await db.collection('attempts').doc(attempt.id).set({ order }, { merge: true });
+      }
+      const byId = new Map(questions.map((q) => [q.id, q]));
+      ordered = order.map((id) => byId.get(id)).filter(Boolean);
+      const seen = new Set(order);
+      questions.forEach((q) => { if (!seen.has(q.id)) ordered.push(q); }); // questions added after the exam began go last
+    }
+
     res.json({
       serverTime: Date.now(),
       endsAt: attempt.endsAt,
@@ -314,8 +339,8 @@ router.post(
       savedAnswers: attempt.answers || {},
       tabSwitches: attempt.tabSwitches || 0,
       clearOnSwitch: cfg.clearAnswersOnTabSwitch !== false,
-      total: questions.length,
-      questions: questions.map(publicQuestion),
+      total: ordered.length,
+      questions: ordered.map(publicQuestion),
     });
   })
 );

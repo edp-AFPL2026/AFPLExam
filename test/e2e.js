@@ -152,6 +152,14 @@ function pdfForm(fields) {
   assert.strictEqual(Object.keys((await db.collection('attempts').doc(reg.data.student.id).get()).data().answers).length, 2);
   ok('tab switch: counted once, answers cleared, stale save ignored');
 
+  // random order: stored per student, same on every reload, same set of questions
+  const again = await api('POST', '/api/student/exam/start', { token: S });
+  assert.deepStrictEqual(again.data.questions.map((x) => x.id), restart.data.questions.map((x) => x.id), 'order stays the same on reload');
+  assert.deepStrictEqual(again.data.questions.map((x) => x.id).sort(), q.map((x) => x.id).sort(), 'same questions, only the order differs');
+  const storedOrder = (await db.collection('attempts').doc(reg.data.student.id).get()).data().order;
+  assert.ok(Array.isArray(storedOrder) && storedOrder.length === q.length, 'order saved on the attempt');
+  ok('live exam: question order is stored per student and stable on reload');
+
   // Simulate the student closing the browser: the server must auto-submit after the timer ends (+grace)
   const aRef = db.collection('attempts').doc(reg.data.student.id);
   await aRef.update({ endsAt: Date.now() - GRACE_MS - 1000 });

@@ -236,6 +236,7 @@
           </div>
           <p class="small muted" style="margin-top:12px">Example for 30 marks: Fail 0 to 14, Great 15 to 20, Very Good 21 to 25, Excellent 26 to 30. If your exam has a different total, change these numbers.</p>
           <label class="check" style="margin-top:14px"><input type="checkbox" id="s-clear" ${c.clearAnswersOnTabSwitch !== false ? 'checked' : ''}> <span>When a student switches tab or window during the live exam: show a warning and clear all selected answers</span></label>
+          <label class="check" style="margin-top:10px"><input type="checkbox" id="s-shuffle" ${c.shuffleExamQuestions !== false ? 'checked' : ''}> <span>Show the live-exam questions to every student in a different random order</span></label>
           <p class="small muted">Every tab switch is counted and shown in Results and Students. Mock tests are not affected.</p>
         </section>
         <section class="panel">
@@ -273,6 +274,7 @@
         gradeExcellentFrom: Number($('#s-excel').value),
         shortlistFromMarks: Number($('#s-short-from').value),
         clearAnswersOnTabSwitch: $('#s-clear').checked,
+        shuffleExamQuestions: $('#s-shuffle').checked,
         shortlistMessage: $('#s-short').value.trim(),
         rejectMessage: $('#s-rej').value.trim(),
         rules: lines($('#s-rules').value),

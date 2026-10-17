@@ -15,7 +15,7 @@
     "test:frontend": "node test/frontend.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "dependencies": {
     "@googleapis/drive": "^26.0.2",
