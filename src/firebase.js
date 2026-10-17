@@ -2,6 +2,18 @@ require('dotenv').config();
 
 let db;
 
+// Netlify's text box can change a pasted private key (quotes kept, \n turned into spaces or real line breaks).
+// This rebuilds a clean PEM from whatever was pasted.
+function normalizePrivateKey(raw) {
+  let k = String(raw || '').trim();
+  if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) k = k.slice(1, -1);
+  k = k.replace(/\\r/g, '').replace(/\\n/g, '\n');
+  const m = k.match(/-----BEGIN ([A-Z ]*PRIVATE KEY)-----([\s\S]*?)-----END \1-----/);
+  if (!m) return k;
+  const body = m[2].replace(/[^A-Za-z0-9+/=]/g, '');
+  return `-----BEGIN ${m[1]}-----\n${body.match(/.{1,64}/g).join('\n')}\n-----END ${m[1]}-----\n`;
+}
+
 if (process.env.USE_MEMORY_DB === '1') {
   // Local fake database used only by `npm test` (no Firebase needed)
   ({ db } = require('../test/memoryDb'));
@@ -38,7 +50,7 @@ if (process.env.USE_MEMORY_DB === '1') {
       credential = admin.credential.cert({
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        privateKey: normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY),
       });
     } else {
       throw new Error('Firebase key not found. Put serviceAccountKey.json in the project folder (next to package.json).');
