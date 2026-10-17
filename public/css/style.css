@@ -539,3 +539,6 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
 
 .proctor-note { background: var(--warn-100); color: var(--warn); font-size: 0.88rem; font-weight: 600; padding: 7px var(--gutter); border-bottom: 1px solid var(--alu-200); }
 .proctor-note.hit { background: var(--red-100); color: var(--red-700); }
+
+/* test instruction point 5 stands out */
+.rules li:nth-child(5) { color: var(--red-700, #b3261e); font-weight: 700; }
