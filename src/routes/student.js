@@ -46,7 +46,8 @@ const answersSchema = z.record(z.string().max(128), z.number().int().min(0).max(
 const registerSchema = z.object({
   name: z.string().trim().min(2).max(100),
   email: z.string().trim().email().max(160),
-  contact: z.string().trim().regex(/^\+?[0-9\s-]{10,15}$/, 'Enter a valid contact number'),
+  // exactly 10 digits (spaces and dashes are ignored); an 11th digit is rejected
+  contact: z.string().trim().transform((s) => s.replace(/[\s-]/g, '')).pipe(z.string().regex(/^[0-9]{10}$/, 'Contact number must be exactly 10 digits')),
   collegeId: z.string().min(1),
   branch: z.string().trim().min(2).max(120),
   testFor: z.string().trim().min(2).max(120),
@@ -67,8 +68,54 @@ async function loadAttempt(id) {
 
 const mocksDone = (student) => Object.keys(student.mocks || {}).length;
 
-function tokenFor(student) {
-  return sign({ sub: student.id, role: 'student' }, '24h');
+function tokenFor(student, sid) {
+  return sign({ sub: student.id, role: 'student', sid }, '24h');
+}
+
+// ---- one login at a time per student
+// A student document holds { sessionId, sessionSeen, sessionDevice }. A new login is refused while another device
+// has used the account in the last SESSION_LIVE_MS. The same browser (same deviceId) may log in again at once.
+const SESSION_LIVE_MS = 3 * 60 * 1000;
+const crypto = require('crypto');
+const deviceOf = (v) => String(v || '').replace(/[^A-Za-z0-9-]/g, '').slice(0, 64) || null;
+
+async function claimSession(ref, deviceId) {
+  const sid = crypto.randomBytes(12).toString('hex');
+  await db.runTransaction(async (t) => {
+    const snap = await t.get(ref);
+    const d = snap.data() || {};
+    const now = Date.now();
+    const busy = d.sessionId && now - (d.sessionSeen || 0) < SESSION_LIVE_MS;
+    const sameDevice = deviceId && d.sessionDevice && d.sessionDevice === deviceId;
+    if (busy && !sameDevice) {
+      throw new HttpError(409, 'This account is already logged in on another device. Log out there first, or try again in a few minutes.');
+    }
+    t.update(ref, { sessionId: sid, sessionSeen: now, sessionDevice: deviceId });
+  });
+  return sid;
+}
+
+const verifiedSessions = new Map(); // "studentId:sid" -> time of the last database check (saves reads)
+async function checkSession(req, res, next) {
+  try {
+    const { sub, sid } = req.user;
+    const kicked = new HttpError(401, 'You were logged out because this account was opened on another device. Log in again.');
+    if (!sid) throw kicked;
+    const key = `${sub}:${sid}`;
+    const now = Date.now();
+    const last = verifiedSessions.get(key);
+    if (last && now - last < 20000) return next();
+    const ref = db.collection('students').doc(sub);
+    const snap = await ref.get();
+    const d = snap.exists ? snap.data() : null;
+    if (!d || d.sessionId !== sid) { verifiedSessions.delete(key); throw kicked; }
+    if (now - (d.sessionSeen || 0) > 50000) await ref.update({ sessionSeen: now });
+    if (verifiedSessions.size > 5000) verifiedSessions.clear();
+    verifiedSessions.set(key, now);
+    return next();
+  } catch (e) {
+    return next(e);
+  }
 }
 
 // A result is visible only after the admin published it for THIS student. An exam submitted after the last
@@ -137,13 +184,17 @@ router.post(
       manualDecision: null,
       createdAt: Date.now(),
     };
+    const sid = crypto.randomBytes(12).toString('hex');
+    student.sessionId = sid;
+    student.sessionSeen = Date.now();
+    student.sessionDevice = deviceOf(req.body.deviceId);
 
     await db.runTransaction(async (t) => {
       if ((await t.get(ref)).exists) throw new HttpError(409, 'This email is already registered');
       t.set(ref, student);
     });
 
-    res.status(201).json({ token: tokenFor({ id }), student: { id, name: student.name, email } });
+    res.status(201).json({ token: tokenFor({ id }, sid), student: { id, name: student.name, email } });
   })
 );
 
@@ -154,15 +205,32 @@ router.post(
   asyncHandler(async (req, res) => {
     const { email, contact } = z.object({ email: z.string().email(), contact: z.string().min(10) }).parse(req.body);
     const id = studentIdFromEmail(email);
-    const snap = await db.collection('students').doc(id).get();
+    const ref = db.collection('students').doc(id);
+    const snap = await ref.get();
     if (!snap.exists || snap.data().contact !== normPhone(contact)) {
       throw new HttpError(401, 'Email or contact number is incorrect');
     }
-    res.json({ token: tokenFor({ id }), student: { id, name: snap.data().name, email: snap.data().email } });
+    const sid = await claimSession(ref, deviceOf(req.body.deviceId));
+    res.json({ token: tokenFor({ id }, sid), student: { id, name: snap.data().name, email: snap.data().email } });
   })
 );
 
-router.use(requireStudent);
+router.use(requireStudent, checkSession);
+
+// keeps the login lock alive while the page is open (the browser calls this once a minute)
+router.get('/ping', (req, res) => res.json({ ok: true }));
+
+// frees the account so the student can log in again on another device straight away
+router.post(
+  '/logout',
+  asyncHandler(async (req, res) => {
+    verifiedSessions.delete(`${req.user.sub}:${req.user.sid}`);
+    const ref = db.collection('students').doc(req.user.sub);
+    const snap = await ref.get();
+    if (snap.exists && snap.data().sessionId === req.user.sid) await ref.update({ sessionId: null, sessionSeen: 0 });
+    res.json({ ok: true });
+  })
+);
 
 // ---------------------------------------------------------------- status (the frontend polls this)
 router.get(

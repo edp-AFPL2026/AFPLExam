@@ -12,6 +12,21 @@
   };
   const app = $('#app');
 
+  // A random id kept in this browser. The server lets the SAME browser log in again at once (closed tab),
+  // but refuses another device while the first one is in use.
+  const deviceId = (() => {
+    try {
+      let d = localStorage.getItem('af_device');
+      if (!d) { d = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`; localStorage.setItem('af_device', d); }
+      return d;
+    } catch (e) { return `tmp-${Math.random().toString(36).slice(2, 12)}`; }
+  })();
+  let pingTimer = null;
+  function startPing() {
+    clearInterval(pingTimer);
+    pingTimer = setInterval(() => { if (S.token) api('/student/ping', { token: S.token }).catch((e) => { if (e.status === 401) logout(e.message); }); }, 60000);
+  }
+
   // ---------------------------------------------------------------- small utilities
   function every(fn, ms) {
     const id = setInterval(fn, ms);
@@ -29,13 +44,14 @@
 
   function call(path, opts) {
     return api(path, { ...(opts || {}), token: S.token }).catch((e) => {
-      if (e.status === 401 && S.token) logout('Your session ended. Continue with your email and contact number.');
+      if (e.status === 401 && S.token) logout(e.message || 'Your session ended. Continue with your email and contact number.');
       throw e;
     });
   }
 
   function logout(message) {
     sessionStorage.removeItem('af_token');
+    clearInterval(pingTimer);
     S.token = null;
     S.status = null;
     leaveView();
@@ -54,7 +70,10 @@
       who.innerHTML = `<span>${esc(S.status.student.name)}</span><button class="btn btn-ghost btn-sm" id="btn-logout">Log out</button>`;
       $('#btn-logout').onclick = async () => {
         const ok = await confirmModal({ title: 'Log out?', body: '<p>You can continue later with your email and contact number.</p>', confirmText: 'Log out' });
-        if (ok) logout();
+        if (ok) {
+          await api('/student/logout', { method: 'POST', json: {}, token: S.token }).catch(() => {}); // frees the account for another device
+          logout();
+        }
       };
     } else {
       who.innerHTML = '';
@@ -111,7 +130,7 @@
         <div class="form-grid">
           <div class="field"><label for="f-name">Full name</label><input id="f-name" name="name" type="text" autocomplete="name" maxlength="100" required><span class="err"></span></div>
           <div class="field"><label for="f-email">Email</label><input id="f-email" name="email" type="email" autocomplete="email" maxlength="160" required><span class="err"></span></div>
-          <div class="field"><label for="f-contact">Contact number</label><input id="f-contact" name="contact" type="tel" inputmode="tel" autocomplete="tel" maxlength="16" placeholder="10 digit mobile number" required><span class="err"></span></div>
+          <div class="field"><label for="f-contact">Contact number</label><input id="f-contact" name="contact" type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="tel-national" maxlength="10" placeholder="10 digit mobile number" required><span class="err"></span></div>
           <div class="field"><label for="f-college">College name</label><select id="f-college" name="collegeId" required>${opts(f.colleges, 'Select your college')}</select><span class="err"></span></div>
           <div class="field"><label for="f-branch">Branch / Degree</label><input id="f-branch" name="branch" type="text" list="branch-list" maxlength="120" placeholder="Select or type your branch" required><datalist id="branch-list">${f.branchOptions.map((b) => `<option value="${esc(b)}"></option>`).join('')}</datalist><span class="err"></span></div>
           <div class="field"><label for="f-testfor">Test for</label><select id="f-testfor" name="testFor" required>${opts(f.testForOptions, 'Select the internship')}</select><span class="err"></span></div>
@@ -236,7 +255,7 @@
 
     check('name', v('name').length >= 2, 'Enter your full name.');
     check('email', /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v('email')), 'Enter a valid email address.');
-    check('contact', v('contact').replace(/\D/g, '').length >= 10, 'Enter a 10 digit contact number.');
+    check('contact', /^[0-9]{10}$/.test(v('contact')), 'Enter exactly 10 digits.');
     check('collegeId', !!v('collegeId'), 'Select your college.');
     check('branch', v('branch').length >= 2, 'Enter your branch or degree.');
     check('testFor', !!v('testFor'), 'Select the internship you are applying for.');
@@ -263,6 +282,7 @@
 
     const fd = new FormData();
     ['name', 'email', 'contact', 'collegeId', 'branch', 'testFor', 'placeId'].forEach((n) => fd.append(n, v(n)));
+    fd.append('deviceId', deviceId);
     if (file) fd.append('resume', file);
 
     const btn = $('#btn-submit');
@@ -272,6 +292,7 @@
       const res = await api('/student/register', { method: 'POST', form: fd });
       S.token = res.token;
       sessionStorage.setItem('af_token', res.token);
+      startPing();
       await loadStatus();
       toast('Details saved. Start with the mock tests.', 'ok');
       showHub();
@@ -295,7 +316,7 @@
       ${note ? `<div class="notice">${esc(note)}</div>` : '<p class="muted">Enter the email and contact number you registered with.</p>'}
       <form id="login-form" novalidate>
         <div class="field" style="margin-bottom:14px"><label for="l-email">Email</label><input id="l-email" type="email" value="${esc(email)}" autocomplete="email" required></div>
-        <div class="field"><label for="l-contact">Contact number</label><input id="l-contact" type="tel" inputmode="tel" autocomplete="tel" required></div>
+        <div class="field"><label for="l-contact">Contact number</label><input id="l-contact" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="10" autocomplete="tel-national" placeholder="10 digit mobile number" required></div>
         <p class="err" id="l-err" style="color:var(--red-700);min-height:1.2em;margin:10px 0 0"></p>
         <div class="modal-actions">
           <button class="btn btn-ghost" type="button" data-cancel>Cancel</button>
@@ -308,9 +329,10 @@
       const err = m.el.querySelector('#l-err');
       err.textContent = '';
       try {
-        const res = await api('/student/login', { method: 'POST', json: { email: m.el.querySelector('#l-email').value.trim(), contact: m.el.querySelector('#l-contact').value.trim() } });
+        const res = await api('/student/login', { method: 'POST', json: { email: m.el.querySelector('#l-email').value.trim(), contact: m.el.querySelector('#l-contact').value.trim(), deviceId } });
         S.token = res.token;
         sessionStorage.setItem('af_token', res.token);
+        startPing();
         m.close();
         await loadStatus();
         showHub();
@@ -909,6 +931,17 @@
     $('#to-hub').onclick = () => { showHub(); window.scrollTo(0, 0); };
   }
 
+  // Phone fields take digits only and never more than 10 (a pasted +91 or 91 prefix is dropped)
+  document.addEventListener('input', (e) => {
+    const t = e.target;
+    if (!t || (t.id !== 'f-contact' && t.id !== 'l-contact')) return;
+    let d = t.value.replace(/\D/g, '');
+    if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
+    if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+    d = d.slice(0, 10);
+    if (t.value !== d) t.value = d;
+  });
+
   // ---------------------------------------------------------------- start
   async function boot() {
     try {
@@ -920,6 +953,7 @@
     if (S.token) {
       try {
         await loadStatus();
+        startPing();
         return showHub();
       } catch (e) {
         if (e.status !== 401) {

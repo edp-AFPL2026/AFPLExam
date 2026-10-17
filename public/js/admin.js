@@ -598,12 +598,17 @@
           <tr><th>Exam</th><td>${statusBadge(s.examStatus)} ${s.startedAt ? `started ${esc(fmtDateTime(s.startedAt))}` : ''} ${s.submittedAt ? `, submitted ${esc(fmtDateTime(s.submittedAt))}${s.autoSubmitted ? ' (auto)' : ''}` : ''}</td></tr>
           ${s.score !== null ? `<tr><th>Score</th><td>${esc(s.score)} of ${esc(s.maxMarks)} (${esc(s.percentage)}%) ${gradeBadge(s.grade)}. ${esc(s.correct)} correct, ${esc(s.wrong)} wrong, ${esc(s.attempted)} attempted.</td></tr>` : ''}
           <tr><th>Result</th><td>${resultBadge(s) || '-'}</td></tr>
+          <tr><th>Login</th><td>${s.loggedIn ? 'Logged in on a device now <button class="btn btn-ghost btn-sm" data-release>Release login</button>' : 'Not logged in'}</td></tr>
           <tr><th>Tab switches</th><td>${esc(s.tabSwitches || 0)}${s.tabSwitches ? ' (answers were cleared each time if the rule was on)' : ''}</td></tr>
           <tr><th>Resume</th><td>${s.resumeUrl ? `<a href="${esc(s.resumeUrl)}" target="_blank" rel="noopener">Open in Google Drive</a>` : '-'}</td></tr>
         </tbody></table></div>
         <h3 style="margin:16px 0 6px">Mock tests</h3>${mocks ? `<ul>${mocks}</ul>` : '<p class="muted">No mock test finished yet.</p>'}
         <div class="modal-actions"><button class="btn btn-primary" data-x>Close</button></div>`);
       m.el.querySelector('[data-x]').onclick = m.close;
+      const rel = m.el.querySelector('[data-release]');
+      if (rel) rel.onclick = async () => {
+        try { await A(`/admin/students/${id}/release-login`, { method: 'POST', json: {} }); toast('Login released. The student can log in again.', 'ok'); m.close(); } catch (e) { toast(e.message, 'error'); }
+      };
     } catch (e) { toast(e.message, 'error'); }
   }
 

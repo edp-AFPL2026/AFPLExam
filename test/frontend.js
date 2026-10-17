@@ -92,6 +92,16 @@ const ok = (m) => console.log(`  ok  ${m}`);
   await sleep(100);
   assert.ok(w.document.querySelectorAll('.field.invalid').length >= 5);
   ok('landing page shows company, rules, form and validates empty submit');
+
+  // the contact field keeps only digits and never more than 10
+  const phone = w.document.querySelector('#f-contact');
+  for (const [typed, expected] of [['98765432101', '9876543210'], ['+91 98765 43210', '9876543210'], ['98a76-54', '987654'], ['0 98765 43210', '9876543210']]) {
+    phone.value = typed;
+    phone.dispatchEvent(new w.Event('input', { bubbles: true }));
+    assert.strictEqual(phone.value, expected, `"${typed}" should become "${expected}"`);
+  }
+  assert.strictEqual(phone.getAttribute('maxlength'), '10');
+  ok('contact field accepts only 10 digits');
   w.close();
 
   // ---------------- register a student by API, then use the student pages

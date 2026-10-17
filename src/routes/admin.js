@@ -486,6 +486,7 @@ function studentRow(s, a, cfg) {
     wrong: a && a.status === 'submitted' ? a.wrong : null,
     attempted: a && a.status === 'submitted' ? a.attempted : null,
     tabSwitches: a ? a.tabSwitches || 0 : 0,
+    loggedIn: !!(s.sessionId && Date.now() - (s.sessionSeen || 0) < 3 * 60 * 1000),
     percentage: ev ? ev.percentage : null,
     grade: ev ? ev.grade : null,
     autoStatus: ev ? ev.autoStatus : null, // by the marks rule
@@ -555,6 +556,17 @@ router.delete(
     const resumeMoved = await trashResume(s.data().resumeFileId);
     await Promise.all([db.collection('attempts').doc(req.params.id).delete(), sRef.delete()]);
     res.json({ deleted: true, resumeMoved });
+  })
+);
+
+// A student cannot log in because the account still shows as open on another device: free it
+router.post(
+  '/students/:id/release-login',
+  asyncHandler(async (req, res) => {
+    const ref = db.collection('students').doc(req.params.id);
+    if (!(await ref.get()).exists) throw new HttpError(404, 'Student not found');
+    await ref.update({ sessionId: null, sessionSeen: 0, sessionDevice: null });
+    res.json({ ok: true });
   })
 );
 

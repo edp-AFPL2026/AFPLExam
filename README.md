@@ -240,3 +240,9 @@ If a student switches to another tab or window during the live exam, a warning a
 
 ## Marks always come from Exam settings
 The "positive marks" and "negative marks" in Admin > Exam settings are used for every question. Per-question `marks` / `negativeMarks` (admin form or CSV) are ignored, so scoring can't differ between questions. To re-grade finished exams after changing the setting, use "Reset exam" for that student.
+
+## One login at a time, 10 digit mobile number
+- A student account can be open on one device at a time. A second device is refused ("already logged in on another device") while the first one was active in the last 3 minutes. The page pings the server once a minute to keep the lock alive.
+- The lock is freed by: the student pressing **Log out**, 3 minutes without activity, or the admin pressing **Release login** in the student's details.
+- The same browser can log in again at once (closed the tab and came back).
+- The mobile number must be exactly 10 digits: the field accepts digits only, stops at 10, and the server rejects anything else.

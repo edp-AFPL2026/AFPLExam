@@ -86,14 +86,46 @@ function pdfForm(fields) {
   assert.ok(landing.data.exam.rules.length > 0);
   ok('landing page data');
 
-  const fields = { name: 'Rahul Patil', email: 'Rahul@Example.com', contact: '9876543210', collegeId: colleges[0].id, branch: 'Mechanical Engineering', testFor: 'Production Engineering Intern', placeId: places[0].id };
+  const fields = { name: 'Rahul Patil', email: 'Rahul@Example.com', contact: '9876543210', deviceId: 'dev-A', collegeId: colleges[0].id, branch: 'Mechanical Engineering', testFor: 'Production Engineering Intern', placeId: places[0].id };
+  // the mobile number must be exactly 10 digits
+  for (const bad of ['98765432101', '987654321', '+91 98765 43210', 'abcdefghij']) {
+    const r = await api('POST', '/api/student/register', { form: pdfForm({ ...fields, email: 'bad@example.com', contact: bad }) });
+    assert.strictEqual(r.status, 400, `contact "${bad}" must be refused`);
+  }
   const reg = await api('POST', '/api/student/register', { form: pdfForm(fields) });
   assert.strictEqual(reg.status, 201, JSON.stringify(reg.data));
   assert.strictEqual((await api('POST', '/api/student/register', { form: pdfForm(fields) })).status, 409);
-  const S = reg.data.token;
-  const relogin = await api('POST', '/api/student/login', { json: { email: 'rahul@example.com', contact: '+91 98765 43210' } });
-  assert.strictEqual(relogin.status, 200);
-  ok('registration (duplicate blocked, re-login works)');
+  let S = reg.data.token;
+  ok('registration (duplicate blocked, only a 10 digit mobile number accepted)');
+
+  // ---- one login at a time
+  const loginBody = (deviceId) => ({ json: { email: 'rahul@example.com', contact: '9876543210', deviceId } });
+  const onOther = await api('POST', '/api/student/login', loginBody('dev-B'));
+  assert.strictEqual(onOther.status, 409, 'a second device must be refused while the first one is logged in');
+  assert.strictEqual((await api('GET', '/api/student/status', { token: S })).status, 200);
+  const outRes = await api('POST', '/api/student/logout', { token: S, json: {} });
+  assert.strictEqual(outRes.status, 200);
+  assert.strictEqual((await api('GET', '/api/student/status', { token: S })).status, 401, 'logged-out token stops working');
+  const onB = await api('POST', '/api/student/login', loginBody('dev-B'));
+  assert.strictEqual(onB.status, 200);
+  assert.strictEqual((await api('POST', '/api/student/login', loginBody('dev-A'))).status, 409, 'device A is refused while B is logged in');
+  assert.strictEqual((await api('POST', '/api/student/login', { json: { email: 'rahul@example.com', contact: '9876543210' } })).status, 409);
+  // admin can release a stuck lock
+  const rel = await api('POST', `/api/admin/students/${reg.data.student.id}/release-login`, { token: A, json: {} });
+  assert.strictEqual(rel.status, 200);
+  const onA = await api('POST', '/api/student/login', loginBody('dev-A'));
+  assert.strictEqual(onA.status, 200);
+  S = onA.data.token;
+  // same browser can log in again at once (closed the tab and came back)
+  const reopen = await api('POST', '/api/student/login', loginBody('dev-A'));
+  assert.strictEqual(reopen.status, 200);
+  S = reopen.data.token;
+  // an idle lock (no activity for 3+ minutes) lets another device in
+  await db.collection('students').doc(reg.data.student.id).update({ sessionSeen: Date.now() - 4 * 60 * 1000 });
+  const idle = await api('POST', '/api/student/login', loginBody('dev-C'));
+  assert.strictEqual(idle.status, 200, 'an idle account can be opened elsewhere');
+  S = idle.data.token;
+  ok('one login at a time: other device refused, logout frees it, admin release, idle lock expires');
 
   // ---- mocks
   let st = (await api('GET', '/api/student/status', { token: S })).data;
@@ -132,8 +164,12 @@ function pdfForm(fields) {
   assert.ok(!JSON.stringify(start.data).includes('correctIndex'));
   assert.strictEqual(start.data.total, 5);
   const q = start.data.questions;
+  // the order is random per student, so look up each question's right answer by id
+  const keyOf = new Map((await db.collection('questions').where('set', '==', 'exam').get()).docs.map((d) => [d.id, d.data().correctIndex]));
+  const rightIdx = keyOf.get(q[0].id);
+  const wrongIdx = (keyOf.get(q[1].id) + 1) % 4;
   // sample exam answers: correct = [2,2,1,3,1]. Answer q0 right, q1 wrong, q2 right, leave q3,q4 blank
-  const save = await api('PUT', '/api/student/exam/answers', { token: S, json: { answers: { [q[0].id]: 2, [q[1].id]: 0 } } });
+  const save = await api('PUT', '/api/student/exam/answers', { token: S, json: { answers: { [q[0].id]: rightIdx, [q[1].id]: wrongIdx } } });
   assert.strictEqual(save.data.saved, true);
   ok('exam started, questions hide answers, autosave works');
 
@@ -144,11 +180,11 @@ function pdfForm(fields) {
   assert.deepStrictEqual((await db.collection('attempts').doc(reg.data.student.id).get()).data().answers, {});
   const vRetry = await api('POST', '/api/student/exam/violation', { token: S, json: { seq: 1 } });
   assert.strictEqual(vRetry.data.tabSwitches, 1, 'same seq must not count twice');
-  await api('PUT', '/api/student/exam/answers', { token: S, json: { answers: { [q[0].id]: 2 }, epoch: 0 } });
+  await api('PUT', '/api/student/exam/answers', { token: S, json: { answers: { [q[0].id]: rightIdx }, epoch: 0 } });
   assert.deepStrictEqual((await db.collection('attempts').doc(reg.data.student.id).get()).data().answers, {}, 'stale save must not bring answers back');
   const restart = await api('POST', '/api/student/exam/start', { token: S });
   assert.strictEqual(restart.data.tabSwitches, 1);
-  await api('PUT', '/api/student/exam/answers', { token: S, json: { answers: { [q[0].id]: 2, [q[1].id]: 0 }, epoch: 1 } });
+  await api('PUT', '/api/student/exam/answers', { token: S, json: { answers: { [q[0].id]: rightIdx, [q[1].id]: wrongIdx }, epoch: 1 } });
   assert.strictEqual(Object.keys((await db.collection('attempts').doc(reg.data.student.id).get()).data().answers).length, 2);
   ok('tab switch: counted once, answers cleared, stale save ignored');
 
