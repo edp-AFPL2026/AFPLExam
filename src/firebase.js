@@ -12,11 +12,20 @@ if (process.env.USE_MEMORY_DB === '1') {
     // 1. The key file in the project folder (same as Firebase's own sample code):
     //      var serviceAccount = require("path/to/serviceAccountKey.json");
     //    Put the downloaded file next to package.json and name it serviceAccountKey.json.
-    //    (A plain require() with a fixed path also lets Netlify find and bundle the file.)
+    // The path is built at run time on purpose: Netlify's bundler follows a plain require('../serviceAccountKey.json')
+    // and fails the build when the file is not on GitHub. With a run-time path it just looks for the file
+    // and falls back to the FIREBASE_* variables when it is not there.
     let serviceAccount = null;
     try {
-      // eslint-disable-next-line global-require
-      serviceAccount = require('../serviceAccountKey.json');
+      const fs = require('fs');
+      const path = require('path');
+      const candidates = [
+        path.join(__dirname, '..', 'serviceAccountKey.json'),
+        path.join(process.cwd(), 'serviceAccountKey.json'),
+        path.join(process.env.LAMBDA_TASK_ROOT || '', 'serviceAccountKey.json'),
+      ];
+      const found = candidates.find((f) => f && fs.existsSync(f));
+      if (found) serviceAccount = JSON.parse(fs.readFileSync(found, 'utf8'));
     } catch (e) {
       serviceAccount = null;
     }
