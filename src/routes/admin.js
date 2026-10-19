@@ -263,7 +263,7 @@ router.post(
     const q = questionSchema.parse(req.body);
     const ref = db.collection('questions').doc();
     await ref.set(cleanQuestion(q));
-    invalidateQuestionCache();
+    await invalidateQuestionCache();
     res.status(201).json({ id: ref.id, ...q });
   })
 );
@@ -288,14 +288,14 @@ async function storeQuestions(questions, replace) {
   }
   const ops = questions.map((q, i) => (batch) => batch.set(db.collection('questions').doc(), { ...cleanQuestion(q), order: q.order ?? i }));
   await commitInChunks(db, ops);
-  invalidateQuestionCache();
+  await invalidateQuestionCache();
   return { added: questions.length };
 }
 
 async function deleteSet(s) {
   const snap = await db.collection('questions').where('set', '==', s).get();
   await commitInChunks(db, snap.docs.map((d) => (batch) => batch.delete(d.ref)));
-  invalidateQuestionCache();
+  await invalidateQuestionCache();
   return snap.size;
 }
 
@@ -360,7 +360,7 @@ router.put(
     const doc = cleanQuestion(q);
     delete doc.createdAt;
     await ref.set(doc, { merge: true });
-    invalidateQuestionCache();
+    await invalidateQuestionCache();
     res.json({ id: ref.id, ...(await ref.get()).data() });
   })
 );
@@ -369,7 +369,7 @@ router.delete(
   '/questions/:id',
   asyncHandler(async (req, res) => {
     await db.collection('questions').doc(req.params.id).delete();
-    invalidateQuestionCache();
+    await invalidateQuestionCache();
     res.json({ ok: true });
   })
 );
@@ -526,7 +526,7 @@ router.get(
     else if (status) rows = rows.filter((r) => r.examStatus === status);
     if (q) {
       const needle = String(q).toLowerCase();
-      rows = rows.filter((r) => [r.name, r.rollNumber, r.email, r.contact, r.college].some((v) => String(v).toLowerCase().includes(needle)));
+      rows = rows.filter((r) => [r.rollNumber, r.name, r.email, r.contact, r.college].some((v) => String(v).toLowerCase().includes(needle)));
     }
     rows.sort((a, b) => b.registeredAt - a.registeredAt);
     res.json({ total: rows.length, page, limit, students: rows.slice((page - 1) * limit, page * limit) });
@@ -631,11 +631,11 @@ router.get(
   asyncHandler(async (req, res) => {
     const { cfg, students, attemptBy } = await loadAll();
     const rows = students.map((s) => studentRow(s, attemptBy.get(s.id), cfg)).sort((a, b) => (b.score ?? -1e9) - (a.score ?? -1e9));
-    const head = ['Name', 'Roll Number', 'Email', 'Contact', 'College', 'Branch/Degree', 'Test For', 'Place', 'Exam Status', 'Score', 'Max Marks', 'Percentage', 'Grade', 'Correct', 'Wrong', 'Attempted', 'Auto Submitted', 'Tab Switches', 'Result (published)', 'Status by marks / admin', 'Submitted At', 'Resume'];
+    const head = ['Roll Number', 'Name', 'Email', 'Contact', 'College', 'Branch/Degree', 'Test For', 'Place', 'Exam Status', 'Score', 'Max Marks', 'Percentage', 'Grade', 'Correct', 'Wrong', 'Attempted', 'Auto Submitted', 'Tab Switches', 'Result (published)', 'Status by marks / admin', 'Submitted At', 'Resume'];
     const lines = [head.map(csvCell).join(',')];
     for (const r of rows) {
       lines.push(
-        [r.name, r.email, r.contact, r.college, r.branch, r.testFor, r.place, r.examStatus, r.score, r.maxMarks, r.percentage === null ? '' : `${r.percentage}%`, r.grade || '', r.correct, r.wrong, r.attempted, r.autoSubmitted ? 'Yes' : 'No', r.tabSwitches, r.resultStatus || '', r.status || '', r.submittedAt ? new Date(r.submittedAt).toISOString() : '', r.resumeUrl]
+        [r.rollNumber, r.name, r.email, r.contact, r.college, r.branch, r.testFor, r.place, r.examStatus, r.score, r.maxMarks, r.percentage === null ? '' : `${r.percentage}%`, r.grade || '', r.correct, r.wrong, r.attempted, r.autoSubmitted ? 'Yes' : 'No', r.tabSwitches, r.resultStatus || '', r.status || '', r.submittedAt ? new Date(r.submittedAt).toISOString() : '', r.resumeUrl]
           .map(csvCell)
           .join(',')
       );

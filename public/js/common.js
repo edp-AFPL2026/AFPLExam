@@ -32,9 +32,20 @@
       body = o.form; // the browser sets the multipart header itself
     }
 
+    // Read requests are safe to repeat: retry a couple of times on a dropped connection or a 502/503/504
+    // (a sleeping serverless function or a short network blip), so the person never sees a one-off error.
+    const isGet = !o.method || o.method === 'GET';
     let res;
     try {
-      res = await fetch(`/api${path}`, { method: o.method || 'GET', headers, body, keepalive: !!o.keepalive });
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          res = await fetch(`/api${path}`, { method: o.method || 'GET', headers, body, keepalive: !!o.keepalive });
+          if (!(isGet && [502, 503, 504].includes(res.status) && attempt < 2)) break;
+        } catch (e) {
+          if (!isGet || attempt >= 2) throw e;
+        }
+        await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
+      }
     } catch (e) {
       const err = new Error('Cannot reach the server. Check your internet connection and try again.');
       err.status = 0;

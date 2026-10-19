@@ -86,23 +86,27 @@
 
   const VIEWS = { dashboard: viewDashboard, settings: viewSettings, questions: viewQuestions, lists: viewLists, company: viewCompany, students: viewStudents, results: viewResults };
 
-  async function route() {
+  async function route(silent) {
     if (!token) return;
+    silent = silent === true; // true = background auto-refresh: keep what is on screen if it fails
     clearTimers();
     const id = (location.hash.replace(/^#\//, '') || 'dashboard').split('?')[0];
     const name = VIEWS[id] ? id : 'dashboard';
     $$('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.view === name));
     const main = $('#main');
-    main.innerHTML = '<div class="loading">Loading...</div>';
+    if (!silent) main.innerHTML = '<div class="loading">Loading...</div>';
     try {
       await VIEWS[name](main);
     } catch (e) {
       if (e.status !== 401) {
         console.error(e);
-        main.innerHTML = `<div class="notice error">${esc(e.message)}</div>`;
+        if (silent) {
+          toast('Could not refresh just now. Will try again in a minute.', 'error');
+          if (name === 'dashboard' && $('#auto') && $('#auto').checked) timers.push(setInterval(() => route(true), 60000));
+        } else main.innerHTML = `<div class="notice error">${esc(e.message)}</div>`;
       }
     }
-    window.scrollTo(0, 0);
+    if (!silent) window.scrollTo(0, 0);
   }
 
   const head = (title, actions) => `<div class="main-head"><h1>${esc(title)}</h1><div class="row-actions">${actions || ''}</div></div>`;
@@ -183,7 +187,7 @@
     const auto = $('#auto');
     auto.checked = sessionStorage.getItem('af_auto') === '1';
     auto.onchange = () => { sessionStorage.setItem('af_auto', auto.checked ? '1' : '0'); route(); };
-    if (auto.checked) timers.push(setInterval(route, 60000));
+    if (auto.checked) timers.push(setInterval(() => route(true), 60000));
   }
 
   // ---------------------------------------------------------------- exam settings

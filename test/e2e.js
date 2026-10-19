@@ -255,6 +255,9 @@ function pdfForm(fields) {
 
   const csvOut = await api('GET', '/api/admin/results/export', { token: A });
   assert.ok(csvOut.data.includes('Rahul Patil'));
+  const csvLines = csvOut.data.replace(/^\uFEFF/, '').split('\n');
+  assert.ok(csvLines[0].startsWith('"Roll Number"') || csvLines[0].startsWith('Roll Number'), 'Roll Number is the first CSV column');
+  assert.ok(csvLines[1].startsWith('"ME-101"') || csvLines[1].startsWith('ME-101'), 'roll number value is in the first column');
   const list = (await api('GET', '/api/admin/students?status=submitted', { token: A })).data;
   assert.strictEqual(list.total, 1);
   ok('CSV export + student list filters');

@@ -18,9 +18,11 @@ if (process.env.USE_MEMORY_DB === '1') {
   // Local fake database used only by `npm test` (no Firebase needed)
   ({ db } = require('../test/memoryDb'));
 } else {
-  const admin = require('firebase-admin');
+  // load only the app + Firestore parts of firebase-admin: a much shorter cold start on Netlify
+  const { initializeApp, getApps, cert } = require('firebase-admin/app');
+  const { getFirestore } = require('firebase-admin/firestore');
 
-  if (!admin.apps.length) {
+  if (!getApps().length) {
     // 1. The key file in the project folder (same as Firebase's own sample code):
     //      var serviceAccount = require("path/to/serviceAccountKey.json");
     //    Put the downloaded file next to package.json and name it serviceAccountKey.json.
@@ -44,10 +46,10 @@ if (process.env.USE_MEMORY_DB === '1') {
 
     let credential;
     if (serviceAccount) {
-      credential = admin.credential.cert(serviceAccount);
+      credential = cert(serviceAccount);
     } else if (process.env.FIREBASE_PRIVATE_KEY) {
       // 2. Fallback: three short environment variables (Netlify limits all variables to 4 KB in total)
-      credential = admin.credential.cert({
+      credential = cert({
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
         privateKey: normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY),
@@ -56,10 +58,10 @@ if (process.env.USE_MEMORY_DB === '1') {
       throw new Error('Firebase key not found. Put serviceAccountKey.json in the project folder (next to package.json).');
     }
 
-    admin.initializeApp({ credential });
+    initializeApp({ credential });
   }
 
-  db = admin.firestore();
+  db = getFirestore();
   try {
     db.settings({ ignoreUndefinedProperties: true });
   } catch (e) {

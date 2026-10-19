@@ -260,3 +260,10 @@ Admin > Students > **Reset exam** now asks for the time: the **full exam duratio
 - **Branch / Degree** is a dropdown managed by the admin under *Colleges, branches and places*. The first time it is needed it is filled from the old branch suggestions.
 - "I already registered" asks for **Roll number, Email and Contact number**. Students registered before this update enter their roll number at their first login and it is saved (refused if another student already owns it).
 - On the last question of a mock test or the live exam the **Next** button becomes **Submit**; it asks for confirmation. The normal Submit button stays in the side panel.
+
+## Speed for ~200 students at once
+
+- Question sets are kept in one shared Firestore document (`qcache`) so each new serverless instance reads 1 document instead of the whole question bank. It is cleared automatically whenever you change questions.
+- Only the Firebase app and Firestore parts are loaded (shorter cold start).
+- Set the Netlify **Functions region** (Site configuration -> Functions) to the region closest to your Firestore database / students (e.g. Mumbai-side for India). This is the single biggest speed-up.
+- CSV export: Roll Number is the first column.
