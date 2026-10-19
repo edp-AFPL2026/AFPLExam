@@ -50,8 +50,8 @@ if (process.env.USE_MEMORY_DB === '1') {
     } else if (process.env.FIREBASE_PRIVATE_KEY) {
       // 2. Fallback: three short environment variables (Netlify limits all variables to 4 KB in total)
       credential = cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        projectId: String(process.env.FIREBASE_PROJECT_ID || '').trim(),
+        clientEmail: String(process.env.FIREBASE_CLIENT_EMAIL || '').trim(),
         privateKey: normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY),
       });
     } else {
@@ -59,6 +59,15 @@ if (process.env.USE_MEMORY_DB === '1') {
     }
 
     initializeApp({ credential });
+    // One line in the function log (no secrets): which key source is used and a short fingerprint of the key,
+    // so it can be compared with the same line printed by `node check-firebase.js` on your PC.
+    try {
+      const k = serviceAccount ? serviceAccount.private_key : normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY);
+      const fp = require('crypto').createHash('sha256').update(String(k || '')).digest('hex').slice(0, 10);
+      const mail = serviceAccount ? serviceAccount.client_email : String(process.env.FIREBASE_CLIENT_EMAIL || '').trim();
+      const proj = serviceAccount ? serviceAccount.project_id : String(process.env.FIREBASE_PROJECT_ID || '').trim();
+      console.log(`[firebase] source=${serviceAccount ? 'keyfile' : 'env'} project=${proj} email=${mail} keyLen=${String(k || '').length} keyFingerprint=${fp}`);
+    } catch (e) { /* logging only */ }
   }
 
   db = getFirestore();
