@@ -106,7 +106,7 @@ const ok = (m) => console.log(`  ok  ${m}`);
 
   // ---------------- register a student by API, then use the student pages
   const fd = new FormData();
-  Object.entries({ name: 'Rahul <b>Patil</b>', email: 'rahul@example.com', contact: '9876543210', collegeId: colleges[0].id, branch: 'Mechanical', testFor: 'Production Engineering Intern', placeId: places[0].id }).forEach(([k, v]) => fd.append(k, v));
+  Object.entries({ rollNumber: 'ME-101', branchId: (await api('GET', '/api/public/landing')).data.form.branches[0].id, name: 'Rahul <b>Patil</b>', email: 'rahul@example.com', contact: '9876543210', collegeId: colleges[0].id, testFor: 'Production Engineering Intern', placeId: places[0].id }).forEach(([k, v]) => fd.append(k, v));
   fd.append('resume', new Blob(['%PDF-1.4 x'], { type: 'application/pdf' }), 'cv.pdf');
   const reg = await api('POST', '/api/student/register', { form: fd });
   assert.strictEqual(reg.status, 201, JSON.stringify(reg.data));
@@ -131,8 +131,13 @@ const ok = (m) => console.log(`  ok  ${m}`);
   assert.ok(!w.document.querySelector('.opt[aria-checked="true"]'), 'mock answers cleared on tab switch');
   click(w, w.document.querySelector('.modal [data-ok]'));
   click(w, w.document.querySelector('.opt'));
-  click(w, w.document.querySelector('#q-submit'));
+  assert.strictEqual(w.document.querySelector('#q-next').textContent, 'Next');
+  for (let i = 0; i < 10 && w.document.querySelector('#q-next').textContent === 'Next'; i += 1) click(w, w.document.querySelector('#q-next'));
+  assert.strictEqual(w.document.querySelector('#q-next').textContent, 'Submit', 'last question shows Submit in place of Next');
+  assert.ok(w.document.querySelector('#q-submit'), 'the normal Submit button stays');
+  click(w, w.document.querySelector('#q-next'));
   await waitFor(w, '[data-yes]');
+  assert.ok(w.document.querySelector('.modal').textContent.includes('Submit this mock test?'), 'asks for confirmation');
   click(w, w.document.querySelector('[data-yes]'));
   await waitFor(w, '.rv');
   assert.ok(w.document.body.textContent.includes('Mock test 1 result'));

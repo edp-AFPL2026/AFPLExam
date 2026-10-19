@@ -129,10 +129,11 @@
       <form class="form-panel" id="reg-form" novalidate>
         <div class="form-grid">
           <div class="field"><label for="f-name">Full name</label><input id="f-name" name="name" type="text" autocomplete="name" maxlength="100" required><span class="err"></span></div>
+          <div class="field"><label for="f-roll">Roll number</label><input id="f-roll" name="rollNumber" type="text" autocomplete="off" maxlength="40" placeholder="Your college roll number" required><span class="err"></span></div>
           <div class="field"><label for="f-email">Email</label><input id="f-email" name="email" type="email" autocomplete="email" maxlength="160" required><span class="err"></span></div>
           <div class="field"><label for="f-contact">Contact number</label><input id="f-contact" name="contact" type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="tel-national" maxlength="10" placeholder="10 digit mobile number" required><span class="err"></span></div>
           <div class="field"><label for="f-college">College name</label><select id="f-college" name="collegeId" required>${opts(f.colleges, 'Select your college')}</select><span class="err"></span></div>
-          <div class="field"><label for="f-branch">Branch / Degree</label><input id="f-branch" name="branch" type="text" list="branch-list" maxlength="120" placeholder="Select or type your branch" required><datalist id="branch-list">${f.branchOptions.map((b) => `<option value="${esc(b)}"></option>`).join('')}</datalist><span class="err"></span></div>
+          <div class="field"><label for="f-branch">Branch / Degree</label><select id="f-branch" name="branchId" required>${opts(f.branches, 'Select your branch')}</select><span class="err"></span></div>
           <div class="field"><label for="f-testfor">Test for</label><select id="f-testfor" name="testFor" required>${opts(f.testForOptions, 'Select the internship')}</select><span class="err"></span></div>
           <div class="field"><label for="f-place">Place</label><select id="f-place" name="placeId" required>${opts(f.places, 'Select your place')}</select><span class="err"></span></div>
           <div class="field"><label for="f-resume">Upload resume <span class="opt-tag">(optional)</span></label><input id="f-resume" name="resume" type="file" accept=".pdf,.doc,.docx,application/pdf"><span class="hint">PDF, DOC or DOCX, up to 4 MB. You can skip this.</span><span class="err"></span></div>
@@ -254,10 +255,11 @@
     };
 
     check('name', v('name').length >= 2, 'Enter your full name.');
+    check('rollNumber', /^[A-Za-z0-9 \-/._]{2,40}$/.test(v('rollNumber')), 'Enter your roll number (letters, digits, - / . _).');
     check('email', /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v('email')), 'Enter a valid email address.');
     check('contact', /^[0-9]{10}$/.test(v('contact')), 'Enter exactly 10 digits.');
     check('collegeId', !!v('collegeId'), 'Select your college.');
-    check('branch', v('branch').length >= 2, 'Enter your branch or degree.');
+    check('branchId', !!v('branchId'), 'Select your branch.');
     check('testFor', !!v('testFor'), 'Select the internship you are applying for.');
     check('placeId', !!v('placeId'), 'Select your place.');
 
@@ -281,7 +283,7 @@
     }
 
     const fd = new FormData();
-    ['name', 'email', 'contact', 'collegeId', 'branch', 'testFor', 'placeId'].forEach((n) => fd.append(n, v(n)));
+    ['name', 'rollNumber', 'email', 'contact', 'collegeId', 'branchId', 'testFor', 'placeId'].forEach((n) => fd.append(n, v(n)));
     fd.append('deviceId', deviceId);
     if (file) fd.append('resume', file);
 
@@ -313,8 +315,9 @@
     const email = typeof prefillEmail === 'string' ? prefillEmail : '';
     const m = openModal(`
       <h2>Continue your test</h2>
-      ${note ? `<div class="notice">${esc(note)}</div>` : '<p class="muted">Enter the email and contact number you registered with.</p>'}
+      ${note ? `<div class="notice">${esc(note)}</div>` : '<p class="muted">Enter the roll number, email and contact number you registered with.</p>'}
       <form id="login-form" novalidate>
+        <div class="field" style="margin-bottom:14px"><label for="l-roll">Roll number</label><input id="l-roll" type="text" maxlength="40" autocomplete="off" required></div>
         <div class="field" style="margin-bottom:14px"><label for="l-email">Email</label><input id="l-email" type="email" value="${esc(email)}" autocomplete="email" required></div>
         <div class="field"><label for="l-contact">Contact number</label><input id="l-contact" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="10" autocomplete="tel-national" placeholder="10 digit mobile number" required></div>
         <p class="err" id="l-err" style="color:var(--red-700);min-height:1.2em;margin:10px 0 0"></p>
@@ -329,7 +332,7 @@
       const err = m.el.querySelector('#l-err');
       err.textContent = '';
       try {
-        const res = await api('/student/login', { method: 'POST', json: { email: m.el.querySelector('#l-email').value.trim(), contact: m.el.querySelector('#l-contact').value.trim(), deviceId } });
+        const res = await api('/student/login', { method: 'POST', json: { rollNumber: m.el.querySelector('#l-roll').value.trim(), email: m.el.querySelector('#l-email').value.trim(), contact: m.el.querySelector('#l-contact').value.trim(), deviceId } });
         S.token = res.token;
         sessionStorage.setItem('af_token', res.token);
         startPing();
@@ -534,7 +537,11 @@
         .join('');
       $$('.opt', container).forEach((b) => { b.onclick = () => pick(Number(b.dataset.i)); });
       q('#q-prev').disabled = idx === 0;
-      q('#q-next').disabled = idx === qs.length - 1;
+      const last = idx === qs.length - 1;
+      const nx = q('#q-next');
+      nx.textContent = last ? 'Submit' : 'Next';
+      nx.classList.toggle('btn-red', last);
+      nx.classList.toggle('btn-primary', !last);
       q('#q-clear').disabled = !Number.isInteger(answers[cur.id]);
       q('#tally').textContent = `Answered ${answeredCount()} of ${qs.length}`;
       q('#pal').innerHTML = qs
@@ -558,7 +565,7 @@
     }
 
     q('#q-prev').onclick = () => go(idx - 1);
-    q('#q-next').onclick = () => go(idx + 1);
+    q('#q-next').onclick = () => (idx === qs.length - 1 ? o.onSubmit({ answered: answeredCount(), total: qs.length }) : go(idx + 1));
     q('#q-clear').onclick = () => { delete answers[qs[idx].id]; o.onChange(); paint(); };
     q('#q-submit').onclick = () => o.onSubmit({ answered: answeredCount(), total: qs.length });
 

@@ -15,6 +15,9 @@ const normEmail = (e) => String(e || '').trim().toLowerCase();
 const normPhone = (p) => String(p || '').replace(/\D/g, '').slice(-10);
 
 // Student document id is derived from the e-mail so one e-mail = one student (no duplicate check races)
+// Roll numbers compare ignoring case, spaces and dashes/slashes ("ab 12/3" == "AB123")
+const normRoll = (r) => String(r || '').toUpperCase().replace(/[\s\-/._]/g, '');
+const rollDocId = (r) => crypto.createHash('sha256').update(normRoll(r)).digest('hex').slice(0, 28);
 const studentIdFromEmail = (email) => crypto.createHash('sha256').update(normEmail(email)).digest('hex').slice(0, 28);
 
 async function commitInChunks(db, ops, size = 400) {
@@ -37,4 +40,4 @@ function csvCell(v) {
 // Client key for rate limiting. On Netlify the visitor IP arrives in this header.
 const clientKey = (req) => String(req.headers['x-nf-client-connection-ip'] || req.headers['client-ip'] || req.ip || 'unknown');
 
-module.exports = { clientKey, HttpError, asyncHandler, normEmail, normPhone, studentIdFromEmail, commitInChunks, csvCell };
+module.exports = { clientKey, HttpError, asyncHandler, normEmail, normPhone, studentIdFromEmail, normRoll, rollDocId, commitInChunks, csvCell };

@@ -62,7 +62,8 @@ function multipart(fields, file) {
   console.log('  ok  admin login via function');
 
   // multipart resume upload (base64 body like Netlify sends it)
-  const fields = { name: 'Asha Kulkarni', email: 'asha@example.com', contact: '9123456780', collegeId: colleges[0].id, branch: 'Production Engineering', testFor: 'Quality Engineering Intern', placeId: places[0].id };
+  const branchList = (await call('GET', '/api/public/landing')).data.form.branches;
+  const fields = { rollNumber: 'PE-7', name: 'Asha Kulkarni', email: 'asha@example.com', contact: '9123456780', collegeId: colleges[0].id, branchId: branchList[0].id, testFor: 'Quality Engineering Intern', placeId: places[0].id };
   const reg = await call('POST', '/api/student/register', multipart(fields, Buffer.from('%PDF-1.4 test resume content')));
   assert.strictEqual(reg.status, 201, JSON.stringify(reg.data));
   assert.ok(reg.data.token);

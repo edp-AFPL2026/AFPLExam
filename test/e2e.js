@@ -86,7 +86,9 @@ function pdfForm(fields) {
   assert.ok(landing.data.exam.rules.length > 0);
   ok('landing page data');
 
-  const fields = { name: 'Rahul Patil', email: 'Rahul@Example.com', contact: '9876543210', deviceId: 'dev-A', collegeId: colleges[0].id, branch: 'Mechanical Engineering', testFor: 'Production Engineering Intern', placeId: places[0].id };
+  const branches = (await api('GET', '/api/public/landing')).data.form.branches;
+  assert.ok(branches.length >= 5, 'default branches are created from the old suggestions');
+  const fields = { rollNumber: 'ME-101', name: 'Rahul Patil', email: 'Rahul@Example.com', contact: '9876543210', deviceId: 'dev-A', collegeId: colleges[0].id, branchId: branches[0].id, testFor: 'Production Engineering Intern', placeId: places[0].id };
   // the mobile number must be exactly 10 digits
   for (const bad of ['98765432101', '987654321', '+91 98765 43210', 'abcdefghij']) {
     const r = await api('POST', '/api/student/register', { form: pdfForm({ ...fields, email: 'bad@example.com', contact: bad }) });
@@ -95,11 +97,19 @@ function pdfForm(fields) {
   const reg = await api('POST', '/api/student/register', { form: pdfForm(fields) });
   assert.strictEqual(reg.status, 201, JSON.stringify(reg.data));
   assert.strictEqual((await api('POST', '/api/student/register', { form: pdfForm(fields) })).status, 409);
+  // same roll number with another e-mail / contact number is a duplicate
+  const dup = await api('POST', '/api/student/register', { form: pdfForm({ ...fields, rollNumber: 'me 101', email: 'someone.else@example.com', contact: '9000000001' }) });
+  assert.strictEqual(dup.status, 409);
+  assert.ok(/already registered/i.test(dup.data.error || dup.data.message || JSON.stringify(dup.data)));
+  const noRoll = await api('POST', '/api/student/register', { form: pdfForm({ ...fields, rollNumber: '', email: 'nr@example.com' }) });
+  assert.strictEqual(noRoll.status, 400, 'roll number is mandatory');
   let S = reg.data.token;
+  // wrong roll number at login is refused
+  assert.strictEqual((await api('POST', '/api/student/login', { json: { rollNumber: 'ME-999', email: 'rahul@example.com', contact: '9876543210', deviceId: 'dev-A' } })).status, 401);
   ok('registration (duplicate blocked, only a 10 digit mobile number accepted)');
 
   // ---- one login at a time
-  const loginBody = (deviceId) => ({ json: { email: 'rahul@example.com', contact: '9876543210', deviceId } });
+  const loginBody = (deviceId) => ({ json: { rollNumber: 'ME-101', email: 'rahul@example.com', contact: '9876543210', deviceId } });
   const onOther = await api('POST', '/api/student/login', loginBody('dev-B'));
   assert.strictEqual(onOther.status, 409, 'a second device must be refused while the first one is logged in');
   assert.strictEqual((await api('GET', '/api/student/status', { token: S })).status, 200);
@@ -109,7 +119,7 @@ function pdfForm(fields) {
   const onB = await api('POST', '/api/student/login', loginBody('dev-B'));
   assert.strictEqual(onB.status, 200);
   assert.strictEqual((await api('POST', '/api/student/login', loginBody('dev-A'))).status, 409, 'device A is refused while B is logged in');
-  assert.strictEqual((await api('POST', '/api/student/login', { json: { email: 'rahul@example.com', contact: '9876543210' } })).status, 409);
+  assert.strictEqual((await api('POST', '/api/student/login', { json: { rollNumber: 'ME-101', email: 'rahul@example.com', contact: '9876543210' } })).status, 409);
   // admin can release a stuck lock
   const rel = await api('POST', `/api/admin/students/${reg.data.student.id}/release-login`, { token: A, json: {} });
   assert.strictEqual(rel.status, 200);
@@ -262,7 +272,7 @@ function pdfForm(fields) {
   assert.strictEqual(badLimits.status, 400);
   ok('grades: 15-20 Great, 21-25 Very Good, 26-30 Excellent, below 15 Fail; 15 of 30 = 50%');
 
-  const noResume = await api('POST', '/api/student/register', { form: (() => { const x = new FormData(); Object.entries({ ...fields, email: 'noresume@example.com', name: 'No Resume' }).forEach(([k, v]) => x.append(k, v)); return x; })() });
+  const noResume = await api('POST', '/api/student/register', { form: (() => { const x = new FormData(); Object.entries({ ...fields, email: 'noresume@example.com', rollNumber: 'NR-1', name: 'No Resume' }).forEach(([k, v]) => x.append(k, v)); return x; })() });
   assert.strictEqual(noResume.status, 201, JSON.stringify(noResume.data));
   const nr = (await api('GET', `/api/admin/students/${noResume.data.student.id}`, { token: A })).data;
   assert.strictEqual(nr.resumeUrl, null);
@@ -275,7 +285,7 @@ function pdfForm(fields) {
   await db.collection('attempts').doc(noResume.data.student.id).delete().catch(() => {});
   const picks = [];
   for (let i = 0; i < 4; i += 1) {
-    const r = await api('POST', '/api/student/register', { form: (() => { const x = new FormData(); Object.entries({ ...fields, email: `pick${i}@example.com`, name: `Pick ${i}`, deviceId: `dev-p${i}` }).forEach(([k, v]) => x.append(k, v)); return x; })() });
+    const r = await api('POST', '/api/student/register', { form: (() => { const x = new FormData(); Object.entries({ ...fields, email: `pick${i}@example.com`, rollNumber: `PK-${i}`, name: `Pick ${i}`, deviceId: `dev-p${i}` }).forEach(([k, v]) => x.append(k, v)); return x; })() });
     assert.strictEqual(r.status, 201, JSON.stringify(r.data));
     await db.collection('students').doc(r.data.student.id).update({ mocks: { 1: { score: 0, maxMarks: 1, attempted: 0 }, 2: { score: 0, maxMarks: 1, attempted: 0 }, 3: { score: 0, maxMarks: 1, attempted: 0 } } });
     const st2 = await api('POST', '/api/student/exam/start', { token: r.data.token });

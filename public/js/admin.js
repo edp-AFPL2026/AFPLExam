@@ -252,7 +252,6 @@
           <div class="form-grid">
             <div class="field full"><label for="s-rules">Test rules (one rule per line)</label><textarea id="s-rules" rows="8">${esc(c.rules.join('\n'))}</textarea></div>
             <div class="field"><label for="s-testfor">"Test for" choices (one per line)</label><textarea id="s-testfor" rows="6">${esc(c.testForOptions.join('\n'))}</textarea></div>
-            <div class="field"><label for="s-branch">Branch / degree suggestions (one per line)</label><textarea id="s-branch" rows="6">${esc(c.branchOptions.join('\n'))}</textarea></div>
           </div>
         </section>
       </form>`;
@@ -281,7 +280,6 @@
         rejectMessage: $('#s-rej').value.trim(),
         rules: lines($('#s-rules').value),
         testForOptions: lines($('#s-testfor').value),
-        branchOptions: lines($('#s-branch').value),
       };
       try {
         await A('/admin/exam-config', { method: 'PUT', json: body });
@@ -422,8 +420,8 @@
 
   // ---------------------------------------------------------------- colleges + places
   async function viewLists(main) {
-    main.innerHTML = `${head('Colleges and places')}<div class="form-grid" style="align-items:start"><div id="col-colleges"></div><div id="col-places"></div></div>`;
-    await Promise.all([listPanel($('#col-colleges'), 'colleges', 'Colleges', 'college'), listPanel($('#col-places'), 'places', 'Places', 'place')]);
+    main.innerHTML = `${head('Colleges, branches and places')}<div class="form-grid" style="align-items:start"><div id="col-colleges"></div><div id="col-branches"></div><div id="col-places"></div></div>`;
+    await Promise.all([listPanel($('#col-branches'), 'branches', 'Branches', 'branch'), listPanel($('#col-colleges'), 'colleges', 'Colleges', 'college'), listPanel($('#col-places'), 'places', 'Places', 'place')]);
   }
 
   async function listPanel(box, path, title, single) {
@@ -545,10 +543,10 @@
         <button class="btn btn-primary" type="submit">Apply</button>
       </form>
       <section class="panel">
-        ${data.students.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Name</th><th>College</th><th>Branch</th><th>Test for</th><th>Place</th><th>Exam</th><th class="num">Score</th><th class="num">%</th><th>Grade</th><th>Result</th><th class="num">Tab switches</th><th>Resume</th><th></th></tr></thead><tbody>
+        ${data.students.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Name</th><th>Roll no.</th><th>College</th><th>Branch</th><th>Test for</th><th>Place</th><th>Exam</th><th class="num">Score</th><th class="num">%</th><th>Grade</th><th>Result</th><th class="num">Tab switches</th><th>Resume</th><th></th></tr></thead><tbody>
           ${data.students.map((s) => `<tr>
             <td><button class="btn-link" data-open="${esc(s.id)}">${esc(s.name)}</button><br><span class="small muted">${esc(s.contact)}</span></td>
-            <td>${esc(s.college)}</td><td>${esc(s.branch)}</td><td>${esc(s.testFor)}</td><td>${esc(s.place)}</td>
+            <td>${esc(s.rollNumber || '-')}</td><td>${esc(s.college)}</td><td>${esc(s.branch)}</td><td>${esc(s.testFor)}</td><td>${esc(s.place)}</td>
             <td>${statusBadge(s.examStatus)}${s.autoSubmitted ? '<br><span class="small muted">auto-submitted</span>' : ''}</td>
             <td class="num">${s.score === null ? '-' : `${esc(s.score)} / ${esc(s.maxMarks)}`}</td>
             <td class="num">${s.percentage === null ? '-' : `${esc(s.percentage)}%`}</td>
@@ -614,7 +612,7 @@
         <h2>${esc(s.name)}</h2>
         <div class="table-wrap"><table class="data"><tbody>
           <tr><th>Email</th><td>${esc(s.email)}</td></tr><tr><th>Contact</th><td>${esc(s.contact)}</td></tr>
-          <tr><th>College</th><td>${esc(s.college)}</td></tr><tr><th>Branch</th><td>${esc(s.branch)}</td></tr>
+          <tr><th>Roll number</th><td>${esc(s.rollNumber || '-')}</td></tr><tr><th>College</th><td>${esc(s.college)}</td></tr><tr><th>Branch</th><td>${esc(s.branch)}</td></tr>
           <tr><th>Test for</th><td>${esc(s.testFor)}</td></tr><tr><th>Place</th><td>${esc(s.place)}</td></tr>
           <tr><th>Registered</th><td>${esc(fmtDateTime(s.registeredAt))}</td></tr>
           <tr><th>Exam</th><td>${statusBadge(s.examStatus)} ${s.startedAt ? `started ${esc(fmtDateTime(s.startedAt))}` : ''} ${s.submittedAt ? `, submitted ${esc(fmtDateTime(s.submittedAt))}${s.autoSubmitted ? ' (auto)' : ''}` : ''}</td></tr>

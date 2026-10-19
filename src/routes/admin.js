@@ -11,7 +11,7 @@ const { invalidateQuestionCache } = require('../services/questions');
 const { sweepExpired } = require('../services/attempts');
 const { trashResume } = require('../drive');
 const { evaluate } = require('../utils/result');
-const { clientKey, HttpError, asyncHandler, normEmail, commitInChunks, csvCell } = require('../utils/helpers');
+const { clientKey, HttpError, asyncHandler, normEmail, rollDocId, commitInChunks, csvCell } = require('../utils/helpers');
 
 const router = express.Router();
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false, keyGenerator: clientKey, validate: { ip: false } });
@@ -94,7 +94,7 @@ const configSchema = z
     registrationOpen: z.boolean(),
     rules: z.array(z.string().trim().min(1).max(500)).max(30),
     testForOptions: z.array(z.string().trim().min(1).max(120)).max(50),
-    branchOptions: z.array(z.string().trim().min(1).max(120)).max(80),
+    branchOptions: z.array(z.string().trim().min(1).max(120)).max(80).optional(),
     shortlistMessage: z.string().trim().min(1).max(1500),
     rejectMessage: z.string().trim().min(1).max(1500),
   })
@@ -211,6 +211,14 @@ function simpleList(collection, label) {
 }
 router.use('/colleges', simpleList('colleges', 'college'));
 router.use('/places', simpleList('places', 'place'));
+router.use(
+  '/branches',
+  asyncHandler(async (req, res, next) => {
+    if (req.method === 'GET') await require('../services/branches').ensureBranches();
+    next();
+  }),
+  simpleList('branches', 'branch')
+);
 
 // ------------------------------------------------------------------ questions
 const setName = z.string().regex(/^(exam|mock[1-9])$/, 'set must be "exam" or "mock1".."mock9"');
@@ -473,6 +481,7 @@ function studentRow(s, a, cfg) {
     name: s.name,
     email: s.email,
     contact: s.contact,
+    rollNumber: s.rollNumber || '',
     college: s.collegeName,
     collegeId: s.collegeId,
     branch: s.branch,
@@ -517,7 +526,7 @@ router.get(
     else if (status) rows = rows.filter((r) => r.examStatus === status);
     if (q) {
       const needle = String(q).toLowerCase();
-      rows = rows.filter((r) => [r.name, r.email, r.contact, r.college].some((v) => String(v).toLowerCase().includes(needle)));
+      rows = rows.filter((r) => [r.name, r.rollNumber, r.email, r.contact, r.college].some((v) => String(v).toLowerCase().includes(needle)));
     }
     rows.sort((a, b) => b.registeredAt - a.registeredAt);
     res.json({ total: rows.length, page, limit, students: rows.slice((page - 1) * limit, page * limit) });
@@ -560,7 +569,9 @@ router.delete(
     const s = await sRef.get();
     if (!s.exists) throw new HttpError(404, 'Student not found');
     const resumeMoved = await trashResume(s.data().resumeFileId);
-    await Promise.all([db.collection('attempts').doc(req.params.id).delete(), sRef.delete()]);
+    const tasks = [db.collection('attempts').doc(req.params.id).delete(), sRef.delete()];
+    if (s.data().rollNumber) tasks.push(db.collection('rollNumbers').doc(rollDocId(s.data().rollNumber)).delete());
+    await Promise.all(tasks);
     res.json({ deleted: true, resumeMoved });
   })
 );
@@ -620,7 +631,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const { cfg, students, attemptBy } = await loadAll();
     const rows = students.map((s) => studentRow(s, attemptBy.get(s.id), cfg)).sort((a, b) => (b.score ?? -1e9) - (a.score ?? -1e9));
-    const head = ['Name', 'Email', 'Contact', 'College', 'Branch/Degree', 'Test For', 'Place', 'Exam Status', 'Score', 'Max Marks', 'Percentage', 'Grade', 'Correct', 'Wrong', 'Attempted', 'Auto Submitted', 'Tab Switches', 'Result (published)', 'Status by marks / admin', 'Submitted At', 'Resume'];
+    const head = ['Name', 'Roll Number', 'Email', 'Contact', 'College', 'Branch/Degree', 'Test For', 'Place', 'Exam Status', 'Score', 'Max Marks', 'Percentage', 'Grade', 'Correct', 'Wrong', 'Attempted', 'Auto Submitted', 'Tab Switches', 'Result (published)', 'Status by marks / admin', 'Submitted At', 'Resume'];
     const lines = [head.map(csvCell).join(',')];
     for (const r of rows) {
       lines.push(

@@ -253,3 +253,10 @@ The "positive marks" and "negative marks" in Admin > Exam settings are used for 
 
 ## Reset a student's exam with extra time
 Admin > Students > **Reset exam** now asks for the time: the **full exam duration** (default) or a **custom number of minutes**. The student's answers and score are deleted, and they start again with a fresh personal timer that begins when they press Start. It works even after the exam window has closed. The time is used once.
+
+## Roll number, branch list and login (new)
+
+- The student form now has a mandatory **Roll number**. It is unique: a second registration with the same roll number (any case/spacing) is refused with "Already registered ... duplicate details", even with a different email or contact number.
+- **Branch / Degree** is a dropdown managed by the admin under *Colleges, branches and places*. The first time it is needed it is filled from the old branch suggestions.
+- "I already registered" asks for **Roll number, Email and Contact number**. Students registered before this update enter their roll number at their first login and it is saved (refused if another student already owns it).
+- On the last question of a mock test or the live exam the **Next** button becomes **Submit**; it asks for confirmation. The normal Submit button stays in the side panel.

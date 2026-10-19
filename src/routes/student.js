@@ -10,7 +10,7 @@ const { getSet, publicQuestion } = require('../services/questions');
 const { finalizeAttempt, finalizeIfExpired, GRACE_MS } = require('../services/attempts');
 const { gradeAnswers } = require('../utils/grading');
 const { evaluate } = require('../utils/result');
-const { clientKey, HttpError, asyncHandler, normEmail, normPhone, studentIdFromEmail } = require('../utils/helpers');
+const { clientKey, HttpError, asyncHandler, normEmail, normPhone, studentIdFromEmail, rollDocId } = require('../utils/helpers');
 
 const router = express.Router();
 
@@ -59,10 +59,13 @@ const registerSchema = z.object({
   // exactly 10 digits (spaces and dashes are ignored); an 11th digit is rejected
   contact: z.string().trim().transform((s) => s.replace(/[\s-]/g, '')).pipe(z.string().regex(/^[0-9]{10}$/, 'Contact number must be exactly 10 digits')),
   collegeId: z.string().min(1),
-  branch: z.string().trim().min(2).max(120),
+  rollNumber: z.string().trim().min(2, 'Enter your roll number').max(40).regex(/^[A-Za-z0-9 \-/._]+$/, 'Roll number can use letters, digits, - / . _ only'),
+  branchId: z.string().min(1, 'Please select your branch'),
   testFor: z.string().trim().min(2).max(120),
   placeId: z.string().min(1),
 });
+
+const DUPLICATE_ROLL = 'Already registered: this roll number is already used (duplicate details). Roll numbers are unique. If this is you, use "I already registered" and log in with the same roll number, email and contact number.';
 
 // ---------------------------------------------------------------- helpers
 async function loadStudent(id) {
@@ -159,10 +162,16 @@ router.post(
       throw new HttpError(409, 'This email is already registered. Please use "Continue" and log in with your email and contact number.');
     }
 
-    const [collegeSnap, placeSnap] = await Promise.all([
+    const rollRef = db.collection('rollNumbers').doc(rollDocId(data.rollNumber));
+    const rollSnap = await rollRef.get();
+    if (rollSnap.exists) throw new HttpError(409, DUPLICATE_ROLL);
+
+    const [collegeSnap, placeSnap, branchSnap] = await Promise.all([
       db.collection('colleges').doc(data.collegeId).get(),
       db.collection('places').doc(data.placeId).get(),
+      db.collection('branches').doc(data.branchId).get(),
     ]);
+    if (!branchSnap.exists) throw new HttpError(400, 'Please select a valid branch');
     if (!collegeSnap.exists) throw new HttpError(400, 'Please select a valid college');
     if (!placeSnap.exists) throw new HttpError(400, 'Please select a valid place');
 
@@ -186,7 +195,9 @@ router.post(
       collegeName: collegeSnap.data().name,
       placeId: data.placeId,
       placeName: placeSnap.data().name,
-      branch: data.branch,
+      rollNumber: data.rollNumber.trim().toUpperCase(),
+      branchId: data.branchId,
+      branch: branchSnap.data().name,
       testFor: data.testFor,
       resumeUrl: resume.url, // Google Drive link (opens for the Drive owner account)
       resumeFileId: resume.fileId,
@@ -201,6 +212,8 @@ router.post(
 
     await db.runTransaction(async (t) => {
       if ((await t.get(ref)).exists) throw new HttpError(409, 'This email is already registered');
+      if ((await t.get(rollRef)).exists) throw new HttpError(409, DUPLICATE_ROLL);
+      t.set(rollRef, { studentId: id, createdAt: Date.now() });
       t.set(ref, student);
     });
 
@@ -213,12 +226,23 @@ router.post(
   '/login',
   loginLimiter,
   asyncHandler(async (req, res) => {
-    const { email, contact } = z.object({ email: z.string().email(), contact: z.string().min(10) }).parse(req.body);
+    const { rollNumber, email, contact } = z.object({ rollNumber: z.string().trim().min(2, 'Enter your roll number'), email: z.string().email(), contact: z.string().min(10) }).parse(req.body);
     const id = studentIdFromEmail(email);
     const ref = db.collection('students').doc(id);
     const snap = await ref.get();
     if (!snap.exists || snap.data().contact !== normPhone(contact)) {
-      throw new HttpError(401, 'Email or contact number is incorrect');
+      throw new HttpError(401, 'Roll number, email or contact number is incorrect');
+    }
+    const rollRef = db.collection('rollNumbers').doc(rollDocId(rollNumber));
+    const have = snap.data().rollNumber;
+    if (have) {
+      if (rollDocId(have) !== rollDocId(rollNumber)) throw new HttpError(401, 'Roll number, email or contact number is incorrect');
+    } else {
+      // students registered before roll numbers existed claim theirs at their first login
+      const owner = await rollRef.get();
+      if (owner.exists && owner.data().studentId !== id) throw new HttpError(409, DUPLICATE_ROLL);
+      await rollRef.set({ studentId: id, createdAt: Date.now() });
+      await ref.update({ rollNumber: rollNumber.trim().toUpperCase() });
     }
     const sid = await claimSession(ref, deviceOf(req.body.deviceId));
     res.json({ token: tokenFor({ id }, sid), student: { id, name: snap.data().name, email: snap.data().email } });
