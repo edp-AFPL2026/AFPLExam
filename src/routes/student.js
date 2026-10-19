@@ -24,6 +24,16 @@ function shuffled(list) {
   return a;
 }
 
+// The questions one student gets: a random pick of `limit` from the pool (0 = all), in random order when shuffle is on
+function pickQuestionIds(questions, limit, shuffle) {
+  const ids = questions.map((q) => q.id);
+  const n = limit > 0 ? Math.min(limit, ids.length) : ids.length;
+  const chosen = shuffled(ids).slice(0, n);
+  if (shuffle) return chosen;
+  const rank = new Map(ids.map((id, i) => [id, i]));
+  return chosen.sort((a, b) => rank.get(a) - rank.get(b));
+}
+
 // College labs usually share ONE public IP, so these limits are deliberately generous.
 const registerLimiter = rateLimit({ windowMs: 10 * 60 * 1000, limit: 400, standardHeaders: true, legacyHeaders: false, keyGenerator: clientKey, validate: { ip: false } });
 const loginLimiter = rateLimit({ windowMs: 10 * 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false, keyGenerator: clientKey, validate: { ip: false } });
@@ -241,12 +251,13 @@ router.get(
     const start = cfg.startTime;
     const end = examEndTime(cfg);
     const mocksRemaining = Math.max(0, cfg.mockCount - mocksDone(student));
+    const hasAllowance = Number(student.examAllowanceMinutes) > 0; // the admin reset this student's exam with a personal time
 
     let state;
     if (attempt && attempt.status === 'submitted') state = 'submitted';
     else if (attempt && attempt.status === 'in_progress') state = 'in_progress';
     else if (!start) state = 'not_scheduled';
-    else if (now >= end) state = 'missed';
+    else if (now >= end && !hasAllowance) state = 'missed';
     else if (cfg.requireMocks && mocksRemaining > 0) state = 'mocks_pending';
     else if (now < start) state = 'waiting';
     else state = 'ready';
@@ -346,11 +357,12 @@ router.post(
 
     const existing = await loadAttempt(student.id);
     if (existing && existing.status === 'submitted') throw new HttpError(409, 'You have already submitted the exam');
+    const allowance = Number(student.examAllowanceMinutes) > 0 ? Number(student.examAllowanceMinutes) : 0;
 
     if (!start) throw new HttpError(403, 'The exam has not been scheduled yet');
     if (!existing) {
       if (now < start) throw new HttpError(403, 'The exam has not started yet', { msToStart: start - now });
-      if (now >= end) throw new HttpError(410, 'The exam window is closed');
+      if (now >= end && !allowance) throw new HttpError(410, 'The exam window is closed');
       if (cfg.requireMocks && mocksDone(student) < cfg.mockCount) {
         throw new HttpError(403, 'Please complete all mock tests before starting the exam');
       }
@@ -369,10 +381,12 @@ router.post(
         placeId: student.placeId,
         status: 'in_progress',
         startedAt: now,
-        // Everybody shares the same end time: scheduled start + duration (late starters get less time)
-        endsAt: end,
+        // Everybody shares the same end time: scheduled start + duration (late starters get less time).
+        // A student whose exam the admin reset gets a personal time that starts now.
+        endsAt: allowance ? now + allowance * 60000 : end,
+        personalMinutes: allowance || null,
         answers: {},
-        order: cfg.shuffleExamQuestions === false ? null : shuffled(questions.map((q) => q.id)),
+        order: pickQuestionIds(questions, Number(cfg.examQuestionCount) || 0, cfg.shuffleExamQuestions !== false),
         marking: { markingType: cfg.markingType, positiveMarks: cfg.positiveMarks, negativeMarks: cfg.negativeMarks },
         autoSubmitted: false,
       };
@@ -383,21 +397,17 @@ router.post(
         t.set(ref, doc);
       });
       attempt = await loadAttempt(student.id);
+      if (allowance) await db.collection('students').doc(student.id).update({ examAllowanceMinutes: null }); // used up
     }
 
-    // The student's own question order is fixed when the exam starts, so a reload keeps the same sequence.
-    let ordered = questions;
-    if (cfg.shuffleExamQuestions !== false) {
-      let order = Array.isArray(attempt.order) ? attempt.order : null;
-      if (!order) {
-        order = shuffled(questions.map((q) => q.id));
-        await db.collection('attempts').doc(attempt.id).set({ order }, { merge: true });
-      }
-      const byId = new Map(questions.map((q) => [q.id, q]));
-      ordered = order.map((id) => byId.get(id)).filter(Boolean);
-      const seen = new Set(order);
-      questions.forEach((q) => { if (!seen.has(q.id)) ordered.push(q); }); // questions added after the exam began go last
+    // This student's questions (which ones and in what order) are fixed when the exam starts, so a reload keeps them.
+    let order = Array.isArray(attempt.order) ? attempt.order : null;
+    if (!order && (cfg.shuffleExamQuestions !== false || Number(cfg.examQuestionCount) > 0)) {
+      order = pickQuestionIds(questions, Number(cfg.examQuestionCount) || 0, cfg.shuffleExamQuestions !== false);
+      await db.collection('attempts').doc(attempt.id).set({ order }, { merge: true });
     }
+    const byId = new Map(questions.map((q) => [q.id, q]));
+    const ordered = order ? order.map((id) => byId.get(id)).filter(Boolean) : questions;
 
     res.json({
       serverTime: Date.now(),

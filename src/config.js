@@ -25,6 +25,7 @@ const DEFAULT_EXAM = {
   requireMocks: true,
   // Leaving the exam tab (switching tab / window) gives a warning and, when this is true, clears every selected answer
   clearAnswersOnTabSwitch: true,
+  examQuestionCount: 0, // how many questions each student gets in the live exam, picked at random from the uploaded pool (0 = all)
   shuffleExamQuestions: true, // every student gets the live-exam questions in their own random order
   registrationOpen: true,
   rules: [

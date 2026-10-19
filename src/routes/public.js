@@ -2,6 +2,7 @@ const express = require('express');
 const { db } = require('../firebase');
 const { getExamConfig, getCompany, describeMarking, examEndTime } = require('../config');
 const { asyncHandler } = require('../utils/helpers');
+const { cached } = require('../services/publicCache');
 
 const router = express.Router();
 
@@ -23,9 +24,9 @@ router.get(
   asyncHandler(async (req, res) => {
     const [cfg, company, colleges, places] = await Promise.all([
       getExamConfig(),
-      getCompany(),
-      activeList('colleges'),
-      activeList('places'),
+      cached('company', getCompany),
+      cached('colleges', () => activeList('colleges')),
+      cached('places', () => activeList('places')),
     ]);
     res.json({
       serverTime: Date.now(),

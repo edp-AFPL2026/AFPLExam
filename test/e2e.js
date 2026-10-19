@@ -270,6 +270,55 @@ function pdfForm(fields) {
   assert.ok('grade' in rr && 'percentage' in rr && 'autoStatus' in rr && 'status' in rr);
   ok('resume is optional; admin results carry grade, percentage and status');
 
+  // ---- a limit on the number of exam questions: every student gets a random pick of N from the pool
+  await api('PUT', '/api/admin/exam-config', { token: A, json: { examQuestionCount: 3 } });
+  await db.collection('attempts').doc(noResume.data.student.id).delete().catch(() => {});
+  const picks = [];
+  for (let i = 0; i < 4; i += 1) {
+    const r = await api('POST', '/api/student/register', { form: (() => { const x = new FormData(); Object.entries({ ...fields, email: `pick${i}@example.com`, name: `Pick ${i}`, deviceId: `dev-p${i}` }).forEach(([k, v]) => x.append(k, v)); return x; })() });
+    assert.strictEqual(r.status, 201, JSON.stringify(r.data));
+    await db.collection('students').doc(r.data.student.id).update({ mocks: { 1: { score: 0, maxMarks: 1, attempted: 0 }, 2: { score: 0, maxMarks: 1, attempted: 0 }, 3: { score: 0, maxMarks: 1, attempted: 0 } } });
+    const st2 = await api('POST', '/api/student/exam/start', { token: r.data.token });
+    assert.strictEqual(st2.status, 200, JSON.stringify(st2.data));
+    assert.strictEqual(st2.data.total, 3, 'only 3 questions are given');
+    assert.strictEqual(st2.data.questions.length, 3);
+    assert.strictEqual(new Set(st2.data.questions.map((x) => x.id)).size, 3, 'no repeated question');
+    const reload = await api('POST', '/api/student/exam/start', { token: r.data.token });
+    assert.deepStrictEqual(reload.data.questions.map((x) => x.id), st2.data.questions.map((x) => x.id), 'same 3 questions after a reload');
+    picks.push(st2.data.questions.map((x) => x.id).join());
+    const done = await api('POST', '/api/student/exam/submit', { token: r.data.token, json: { answers: {} } });
+    assert.strictEqual(done.status, 200);
+    const att = (await db.collection('attempts').doc(r.data.student.id).get()).data();
+    assert.strictEqual(att.totalQuestions, 3, 'graded out of the 3 given questions');
+    assert.strictEqual(att.maxMarks, 3 * att.marking.positiveMarks);
+    if (i === 0) {
+      // reset with the default duration, then with a custom time: both work even if the exam window is over
+      const savedCfg = (await api('GET', '/api/admin/exam-config', { token: A })).data;
+      await db.collection('settings').doc('exam').set({ startTime: Date.now() - 3 * 3600 * 1000 }, { merge: true });
+      await api('PUT', '/api/admin/exam-config', { token: A, json: { durationMinutes: 30 } }); // clears the config cache; window is now long over
+      const bad = await api('POST', `/api/admin/students/${r.data.student.id}/reset-exam`, { token: A, json: { minutes: 0 } });
+      assert.strictEqual(bad.status, 400);
+      const resetDefault = await api('POST', `/api/admin/students/${r.data.student.id}/reset-exam`, { token: A, json: {} });
+      assert.strictEqual(resetDefault.data.minutes, 30, 'default = the exam duration');
+      assert.strictEqual((await api('GET', '/api/student/status', { token: r.data.token })).data.state, 'ready', 'a reset student can start even after the window closed');
+      const again2 = await api('POST', '/api/student/exam/start', { token: r.data.token });
+      assert.strictEqual(again2.status, 200, JSON.stringify(again2.data));
+      assert.ok(Math.abs(again2.data.msRemaining - 30 * 60000) < 5000, 'a fresh 30 minutes');
+      assert.strictEqual((await db.collection('students').doc(r.data.student.id).get()).data().examAllowanceMinutes, null, 'allowance used up');
+      await api('POST', '/api/student/exam/submit', { token: r.data.token, json: { answers: {} } });
+      const resetCustom = await api('POST', `/api/admin/students/${r.data.student.id}/reset-exam`, { token: A, json: { minutes: 45 } });
+      assert.strictEqual(resetCustom.data.minutes, 45);
+      const again3 = await api('POST', '/api/student/exam/start', { token: r.data.token });
+      assert.ok(Math.abs(again3.data.msRemaining - 45 * 60000) < 5000, 'extra time: 45 minutes');
+      await db.collection('settings').doc('exam').set({ startTime: savedCfg.startTime }, { merge: true }); // reopen the window for the next students
+      await api('PUT', '/api/admin/exam-config', { token: A, json: { durationMinutes: savedCfg.durationMinutes } });
+    }
+    await api('DELETE', `/api/admin/students/${r.data.student.id}`, { token: A });
+  }
+  assert.ok(new Set(picks).size > 1, 'students should not all get the same 3 questions');
+  await api('PUT', '/api/admin/exam-config', { token: A, json: { examQuestionCount: 0 } });
+  ok('limit of 3 exam questions: random pick per student, stable on reload, graded out of 3');
+
   // ---- results stay hidden for exams submitted AFTER a publish, until the admin publishes again
   const late = noResume.data;
   const lateS = late.token;

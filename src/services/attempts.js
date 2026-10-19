@@ -11,7 +11,7 @@ const GRACE_MS = 10 * 1000;
  * Only the questions the student actually attempted are graded.
  */
 async function finalizeAttempt(studentId, { auto = false, answers = null } = {}) {
-  const questions = await getSet('exam');
+  const pool = await getSet('exam');
   const ref = db.collection('attempts').doc(studentId);
 
   return db.runTransaction(async (t) => {
@@ -21,6 +21,9 @@ async function finalizeAttempt(studentId, { auto = false, answers = null } = {})
     if (attempt.status === 'submitted') return { id: snap.id, ...attempt };
 
     const finalAnswers = answers ? { ...(attempt.answers || {}), ...answers } : attempt.answers || {};
+    // grade only the questions this student was given (a random pick when the admin limits the number)
+    const given = Array.isArray(attempt.order) ? new Set(attempt.order) : null;
+    const questions = given ? pool.filter((q) => given.has(q.id)) : pool;
     const g = gradeAnswers(questions, finalAnswers, attempt.marking);
     const update = {
       status: 'submitted',

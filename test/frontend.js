@@ -205,6 +205,16 @@ const ok = (m) => console.log(`  ok  ${m}`);
     assert.ok(w.document.querySelector('#main').textContent.includes(expected), `${hash} should show "${expected}"`);
   }
   assert.ok(w.document.querySelector('#main').textContent.includes('Rahul'), 'results table shows the student');
+  // reset exam dialog: default duration or custom extra time
+  w.location.hash = '#/students';
+  await waitFor(w, '[data-reset]', 6000);
+  click(w, w.document.querySelector('[data-reset]'));
+  await waitFor(w, '#rt-min');
+  const dlg = w.document.querySelector('.modal').textContent;
+  assert.ok(dlg.includes('Full exam duration (30 minutes)') && dlg.includes('Custom time'), dlg);
+  click(w, w.document.querySelector('.modal [data-cancel]'));
+  ok('reset exam dialog offers the full duration or a custom time');
+
   ok('admin pages: settings, questions, colleges, company, students, results');
 
   assert.deepStrictEqual(errors, [], `Browser errors: ${errors.join(' | ')}`);

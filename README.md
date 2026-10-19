@@ -246,3 +246,10 @@ The "positive marks" and "negative marks" in Admin > Exam settings are used for 
 - The lock is freed by: the student pressing **Log out**, 3 minutes without activity, or the admin pressing **Release login** in the student's details.
 - The same browser can log in again at once (closed the tab and came back).
 - The mobile number must be exactly 10 digits: the field accepts digits only, stops at 10, and the server rejects anything else.
+
+## Questions per student (random pick) and speed
+- Admin > Exam settings > "Questions in the live exam (per student)": enter how many questions each student gets (for example upload 100, enter 30). Each student gets their own random 30, fixed when they start (a reload shows the same 30). Marks and percentage are calculated out of the questions that student was given. 0 = everyone gets all questions.
+- Speed: company info, colleges and places are cached for 30 s on the server, CSS/JS are cached by the browser for 10 minutes, and the Google font no longer blocks the first paint. Change the Netlify Functions region to be close to your Firestore region (see below).
+
+## Reset a student's exam with extra time
+Admin > Students > **Reset exam** now asks for the time: the **full exam duration** (default) or a **custom number of minutes**. The student's answers and score are deleted, and they start again with a fresh personal timer that begins when they press Start. It works even after the exam window has closed. The time is used once.

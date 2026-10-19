@@ -237,6 +237,7 @@
           <p class="small muted" style="margin-top:12px">Example for 30 marks: Fail 0 to 14, Great 15 to 20, Very Good 21 to 25, Excellent 26 to 30. If your exam has a different total, change these numbers.</p>
           <label class="check" style="margin-top:14px"><input type="checkbox" id="s-clear" ${c.clearAnswersOnTabSwitch !== false ? 'checked' : ''}> <span>When a student switches tab or window during the live exam: show a warning and clear all selected answers</span></label>
           <label class="check" style="margin-top:10px"><input type="checkbox" id="s-shuffle" ${c.shuffleExamQuestions !== false ? 'checked' : ''}> <span>Show the live-exam questions to every student in a different random order</span></label>
+          <div class="field" style="max-width:360px;margin-top:10px"><label for="s-qcount">Questions in the live exam (per student)</label><input id="s-qcount" type="number" min="0" max="2000" step="1" value="${esc(c.examQuestionCount || 0)}"><span class="hint">Each student gets this many questions picked at random from all the uploaded exam questions. Example: upload 100, enter 30. Enter 0 to give everyone all questions.</span></div>
           <p class="small muted">Every tab switch is counted and shown in Results and Students. Mock tests are not affected.</p>
         </section>
         <section class="panel">
@@ -275,6 +276,7 @@
         shortlistFromMarks: Number($('#s-short-from').value),
         clearAnswersOnTabSwitch: $('#s-clear').checked,
         shuffleExamQuestions: $('#s-shuffle').checked,
+        examQuestionCount: Math.max(0, Math.floor(Number($('#s-qcount').value) || 0)),
         shortlistMessage: $('#s-short').value.trim(),
         rejectMessage: $('#s-rej').value.trim(),
         rules: lines($('#s-rules').value),
@@ -578,8 +580,28 @@
     $$('[data-del]', main).forEach((b) => { b.onclick = async () => { if (await deleteStudent(b.dataset.del, b.dataset.name)) route(); }; });
     $$('[data-reset]', main).forEach((b) => {
       b.onclick = async () => {
-        if (!(await confirmModal({ title: 'Reset this student\'s exam?', body: '<p>Their answers and score are deleted and they can start the exam again while the exam window is open. Use this only after a technical problem.</p>', confirmText: 'Reset exam', danger: true }))) return;
-        try { await A(`/admin/students/${b.dataset.reset}/attempt`, { method: 'DELETE' }); toast('Exam reset', 'ok'); route(); } catch (e) { toast(e.message, 'error'); }
+        let dur = 60;
+        try { dur = (await A('/admin/exam-config')).durationMinutes || 60; } catch (e) { /* default */ }
+        const m = openModal(`
+          <h2>Reset this student's exam?</h2>
+          <p>Their answers and score are deleted. They start the exam again with a fresh time that begins when they press Start. It works even if the exam window has closed. Use this only after a technical problem.</p>
+          <div class="field" style="margin:12px 0"><label class="check"><input type="radio" name="rt" value="default" checked> <span>Full exam duration (${esc(dur)} minutes)</span></label></div>
+          <div class="field" style="margin:12px 0"><label class="check"><input type="radio" name="rt" value="custom"> <span>Custom time (extra time):</span></label>
+            <input id="rt-min" type="number" min="1" max="600" step="1" value="${esc(dur)}" style="max-width:140px;margin-top:6px" aria-label="Minutes"> <span class="small muted">minutes in total</span></div>
+          <div class="modal-actions"><button class="btn btn-ghost" data-cancel>Cancel</button><button class="btn btn-danger" data-ok>Reset exam</button></div>`, { locked: true });
+        m.el.querySelector('#rt-min').addEventListener('focus', () => { m.el.querySelector('input[value="custom"]').checked = true; });
+        m.el.querySelector('[data-cancel]').onclick = m.close;
+        m.el.querySelector('[data-ok]').onclick = async () => {
+          const custom = m.el.querySelector('input[value="custom"]').checked;
+          const minutes = custom ? Math.floor(Number(m.el.querySelector('#rt-min').value)) : null;
+          if (custom && !(minutes >= 1 && minutes <= 600)) return toast('Enter minutes between 1 and 600', 'error');
+          try {
+            const r = await A(`/admin/students/${b.dataset.reset}/reset-exam`, { method: 'POST', json: { minutes } });
+            m.close();
+            toast(`Exam reset. The student gets ${r.minutes} minutes when they start.`, 'ok');
+            route();
+          } catch (e) { toast(e.message, 'error'); }
+        };
       };
     });
   }

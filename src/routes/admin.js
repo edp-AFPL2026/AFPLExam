@@ -41,6 +41,11 @@ router.post(
 );
 
 router.use(requireAdmin);
+// any change made by the admin refreshes the cached landing-page data (company, colleges, places)
+router.use((req, res, next) => {
+  if (req.method !== 'GET') res.on('finish', () => require('../services/publicCache').clear());
+  next();
+});
 
 router.post(
   '/change-password',
@@ -85,6 +90,7 @@ const configSchema = z
     requireMocks: z.boolean(),
     clearAnswersOnTabSwitch: z.boolean(),
     shuffleExamQuestions: z.boolean(),
+    examQuestionCount: z.number().int().min(0).max(2000),
     registrationOpen: z.boolean(),
     rules: z.array(z.string().trim().min(1).max(500)).max(30),
     testForOptions: z.array(z.string().trim().min(1).max(120)).max(50),
@@ -567,6 +573,22 @@ router.post(
     if (!(await ref.get()).exists) throw new HttpError(404, 'Student not found');
     await ref.update({ sessionId: null, sessionSeen: 0, sessionDevice: null });
     res.json({ ok: true });
+  })
+);
+
+// Reset a student's exam and give them a fresh personal time: the full exam duration (default) or a custom number of minutes.
+// The time starts when the student presses "Start exam", and it works even after the exam window has closed.
+router.post(
+  '/students/:id/reset-exam',
+  asyncHandler(async (req, res) => {
+    const { minutes } = z.object({ minutes: z.number().int().min(1).max(600).nullable().optional() }).parse(req.body || {});
+    const sRef = db.collection('students').doc(req.params.id);
+    if (!(await sRef.get()).exists) throw new HttpError(404, 'Student not found');
+    const cfg = await getExamConfig();
+    const given = minutes || cfg.durationMinutes;
+    await db.collection('attempts').doc(req.params.id).delete();
+    await sRef.update({ examAllowanceMinutes: given });
+    res.json({ ok: true, minutes: given });
   })
 );
 
