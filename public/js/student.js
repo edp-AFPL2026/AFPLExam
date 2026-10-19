@@ -809,7 +809,7 @@
         E.dirty = true;
         writeLocal(answers);
         clearTimeout(E.saveTimer);
-        E.saveTimer = setTimeout(() => save(false), 8000); // save soon after the last click, not only once a minute
+        E.saveTimer = setTimeout(() => save(false), 15000); // save shortly after the last click (fewer database writes than every few seconds)
       },
       async onSubmit({ answered, total }) {
         const left = total - answered;

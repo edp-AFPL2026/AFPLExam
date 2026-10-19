@@ -208,7 +208,7 @@ function pdfForm(fields) {
 
   // Simulate the student closing the browser: the server must auto-submit after the timer ends (+grace)
   const aRef = db.collection('attempts').doc(reg.data.student.id);
-  await aRef.update({ endsAt: Date.now() - GRACE_MS - 1000 });
+  await aRef.update({ endsAt: Date.now() - GRACE_MS - 1000, autoDeadline: Date.now() - 1000 });
   assert.strictEqual(await sweepExpired(), 1);
   const after = (await aRef.get()).data();
   assert.strictEqual(after.status, 'submitted');

@@ -117,12 +117,12 @@ async function checkSession(req, res, next) {
     const key = `${sub}:${sid}`;
     const now = Date.now();
     const last = verifiedSessions.get(key);
-    if (last && now - last < 20000) return next();
+    if (last && now - last < 45000) return next();
     const ref = db.collection('students').doc(sub);
     const snap = await ref.get();
     const d = snap.exists ? snap.data() : null;
     if (!d || d.sessionId !== sid) { verifiedSessions.delete(key); throw kicked; }
-    if (now - (d.sessionSeen || 0) > 50000) await ref.update({ sessionSeen: now });
+    if (now - (d.sessionSeen || 0) > 90000) await ref.update({ sessionSeen: now });
     if (verifiedSessions.size > 5000) verifiedSessions.clear();
     verifiedSessions.set(key, now);
     return next();
@@ -408,6 +408,7 @@ router.post(
         // Everybody shares the same end time: scheduled start + duration (late starters get less time).
         // A student whose exam the admin reset gets a personal time that starts now.
         endsAt: allowance ? now + allowance * 60000 : end,
+        autoDeadline: (allowance ? now + allowance * 60000 : end) + GRACE_MS,
         personalMinutes: allowance || null,
         answers: {},
         order: pickQuestionIds(questions, Number(cfg.examQuestionCount) || 0, cfg.shuffleExamQuestions !== false),

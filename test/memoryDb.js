@@ -45,13 +45,13 @@ function docRef(colName, id) {
 function query(colName, filters = []) {
   return {
     where: (field, op, value) => {
-      if (op !== '==') throw new Error('memoryDb supports only == filters');
-      return query(colName, [...filters, [field, value]]);
+      if (op !== '==' && op !== '<=') throw new Error('memoryDb supports only == and <= filters');
+      return query(colName, [...filters, [field, value, op]]);
     },
     get: async () => {
       const docs = [];
       for (const [id, data] of col(colName)) {
-        if (filters.every(([f, v]) => data[f] === v)) docs.push({ id, data: () => clone(data), exists: true, ref: docRef(colName, id) });
+        if (filters.every(([f, v, op]) => (op === '<=' ? typeof data[f] === 'number' && data[f] <= v : data[f] === v))) docs.push({ id, data: () => clone(data), exists: true, ref: docRef(colName, id) });
       }
       return { docs, size: docs.length, empty: docs.length === 0 };
     },

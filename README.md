@@ -267,3 +267,9 @@ Admin > Students > **Reset exam** now asks for the time: the **full exam duratio
 - Only the Firebase app and Firestore parts are loaded (shorter cold start).
 - Set the Netlify **Functions region** (Site configuration -> Functions) to the region closest to your Firestore database / students (e.g. Mumbai-side for India). This is the single biggest speed-up.
 - CSV export: Roll Number is the first column.
+
+## Fewer database reads/writes (free Firestore plan)
+
+- The per-minute auto-submit job reads only attempts whose time is over (`autoDeadline`), not every student still writing.
+- Answers auto-save 15 s after the last click (not 8 s); the session check runs at most about once a minute per student.
+- The admin dashboard auto-refresh is every 2 minutes. Turn it off during the exam if you want to save reads.

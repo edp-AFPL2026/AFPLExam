@@ -102,7 +102,7 @@
         console.error(e);
         if (silent) {
           toast('Could not refresh just now. Will try again in a minute.', 'error');
-          if (name === 'dashboard' && $('#auto') && $('#auto').checked) timers.push(setInterval(() => route(true), 60000));
+          if (name === 'dashboard' && $('#auto') && $('#auto').checked) timers.push(setInterval(() => route(true), 120000));
         } else main.innerHTML = `<div class="notice error">${esc(e.message)}</div>`;
       }
     }
@@ -187,7 +187,7 @@
     const auto = $('#auto');
     auto.checked = sessionStorage.getItem('af_auto') === '1';
     auto.onchange = () => { sessionStorage.setItem('af_auto', auto.checked ? '1' : '0'); route(); };
-    if (auto.checked) timers.push(setInterval(() => route(true), 60000));
+    if (auto.checked) timers.push(setInterval(() => route(true), 120000));
   }
 
   // ---------------------------------------------------------------- exam settings

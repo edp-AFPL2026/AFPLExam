@@ -27,6 +27,7 @@ async function finalizeAttempt(studentId, { auto = false, answers = null } = {})
     const g = gradeAnswers(questions, finalAnswers, attempt.marking);
     const update = {
       status: 'submitted',
+      autoDeadline: null, // no longer needs the auto-submit sweep
       submittedAt: Date.now(),
       autoSubmitted: auto,
       answers: finalAnswers,
@@ -52,16 +53,16 @@ async function finalizeIfExpired(attempt) {
 
 /** Background job: auto-submit every attempt whose timer ended (even if the student closed the browser) */
 async function sweepExpired() {
-  const snap = await db.collection('attempts').where('status', '==', 'in_progress').get();
-  const now = Date.now();
+  // Only attempts whose time is already over are read (autoDeadline = endsAt + grace, set when the exam starts),
+  // not every student who is still writing: this keeps the Firestore reads of the per-minute job near zero.
+  const snap = await db.collection('attempts').where('autoDeadline', '<=', Date.now()).get();
   let count = 0;
   for (const d of snap.docs) {
     const a = d.data();
-    if (now >= a.endsAt + GRACE_MS) {
-      // eslint-disable-next-line no-await-in-loop
-      await finalizeAttempt(d.id, { auto: true });
-      count += 1;
-    }
+    if (a.status !== 'in_progress') continue;
+    // eslint-disable-next-line no-await-in-loop
+    await finalizeAttempt(d.id, { auto: true });
+    count += 1;
   }
   return count;
 }
